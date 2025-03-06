@@ -1,4 +1,4 @@
-![图片1](https://github.com/user-attachments/assets/3371ad8d-184d-445a-8079-85625b1060ee)
+![image](https://github.com/user-attachments/assets/77fd2f15-3208-4c95-ad0b-d48c0f726479)
 
 > 如果需要体验线上机器人，可以进入群体验哦！！
 
@@ -27,7 +27,7 @@ pip install qq-botpy jieba aiohttp
 ## 2.配置文件
 
 ```yaml
-# 机器人appId
+# 机器人appId，需要从 qq开放平台获取
 appid: "*********"
 # 机器人安全密钥
 secret: "*********"
@@ -41,17 +41,17 @@ groupMessageMaxLen: 5
 userMessageMaxTtl: 7200
 # 是否隐藏模型服务，如果隐藏则无法使用模型
 needHiddenModule: False
-# 模型服务sk
+# 码本模型服务sk
 model_server_sk: '********'
-# 模型服务id
+# 码本模型服务id
 model_server_id: 49
-# 模型的 type 参数 请参考：https://www.lingyuzhao.top/b/Article/377388518747589#model%20%E5%8F%82%E6%95%B0
+# 码本模型的 type 参数 请参考：https://www.lingyuzhao.top/b/Article/377388518747589#model%20%E5%8F%82%E6%95%B0
 model_server_type: 'cat_neko'
-# 模型的 model 参数 请参考：https://www.lingyuzhao.top/b/Article/377388518747589#type%20%E5%8F%82%E6%95%B0
+# 码本模型的 model 参数 请参考：https://www.lingyuzhao.top/b/Article/377388518747589#type%20%E5%8F%82%E6%95%B0
 model_server_model: 'model01'
-# 翻译服务sk
+# 码本翻译官服务sk
 translate_server_sk: '********'
-# 翻译服务id
+# 码本翻译官服务id
 translate_server_id: 46
 ```
 
