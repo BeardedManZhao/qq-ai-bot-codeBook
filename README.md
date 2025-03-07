@@ -2,7 +2,7 @@
 
 > 如果需要体验线上机器人，可以进入群体验哦！！
 
-# qq-ai-bot-new
+# qq-ai-bot-codeBook
 
 我们提供一个高效且易于配置的QQ机器人解决方案，支持无缝接入[码本翻译官API](https://www.lingyuzhao.top/b/Article/3968498572342507)和[码本大语言模型API](https://www.lingyuzhao.top/b/Article/377388518747589)。通过简单的配置文件修改，即可快速部署运行。
 
@@ -16,7 +16,7 @@
 
 ### 1.1 下载项目
 
-请访问 链接下载软件包！
+请访问 GitHub 下载项目文件！
 
 ### 1.2 安装依赖
 

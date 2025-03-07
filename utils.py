@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from collections import deque
 from datetime import datetime
@@ -99,6 +100,7 @@ class HttpClient:
 
 
 class CommandHandler:
+
     def __init__(self, cf, a_command_set):
         """
         初始化并提供处理函数
@@ -107,6 +109,9 @@ class CommandHandler:
         """
         self.command_fun = cf
         self.a_command_set = a_command_set
+
+        # 编译正则表达式
+        self.pattern = re.compile(r'[\s\x00-\x1F\x7F]+')
 
     def get_commands(self):
         # 遍历并打印所有键
@@ -122,7 +127,12 @@ class CommandHandler:
         :param content: 参数上下文
         :return: 结果
         """
-        args = content.split(' ')
+        args = self.pattern.split(content)
+        args[0] = args[0].strip('\uE000 /')
+        if args[0] == '':
+            # 代表命令有问题 偏移一下参数位
+            args = args[1:]
+            args[0] = args[0].strip('\uE000 /')
         if self.is_async(args[0]):
             return await self.command_fun[args[0]](content[len(args[0]):], args[1:])
         return self.command_fun[args[0]](content[len(args[0]):], args[1:])
@@ -144,6 +154,8 @@ class StrUtils:
         :param string: 需要被处理的消息
         :return: 处理之后的消息
         """
+        if len(string) == 0:
+            return string
         if string[0] == '<':
             index = 0
             for e in string:
@@ -152,7 +164,7 @@ class StrUtils:
                     break
             return string[index:].strip()
         else:
-            return string
+            return string.strip()
 
     @staticmethod
     def get_last_segment(input_string) -> str:

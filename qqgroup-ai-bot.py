@@ -95,10 +95,10 @@ async def command_translate_string(string, list_args):
 
 # 构建指令处理器
 command_handler = CommandHandler({
-    "/now": command_get_current_time_formatted,
-    "/testArgs": command_args_string,
-    "/翻译": command_translate_string
-}, {"/翻译"})
+    "now": command_get_current_time_formatted,
+    "testArgs": command_args_string,
+    "翻译": command_translate_string
+}, {"翻译"})
 
 
 class MyClient(botpy.Client):
@@ -124,16 +124,20 @@ class MyClient(botpy.Client):
         :return:
         """
         content = StrUtils.trim_at_message(content)
+        if content == '':
+            await message_bot.reply(content=f"😊 在的在的！")
+            return
+        date_str = StrUtils.get_current_time_formatted()
         try:
             if content[0] == '/':
                 # 代表是指令
+                logger.info(f"【info】时间：{date_str}; 玩家:{member_openid}; 命令:{content};")
                 await message_bot.reply(content=f"😊处理成功\n=========\n{await command_handler.handler(content)}")
             elif need_hidden_module:
                 # 代表隐藏模型功能
                 logger.warning(f"用户输入了无法处理的指令：{content}")
                 await message_bot.reply(content=f"\U0001F63F 无法处理的指令：{content}")
             else:
-                date_str = StrUtils.get_current_time_formatted()
 
                 # 获取到群 id 获取不到给 None
                 group_id = None
@@ -170,6 +174,7 @@ class MyClient(botpy.Client):
         except Exception as e:
             logger.error(f"处理消息时出错：{str(e)}：{traceback.format_exc()}")
             if need_hidden_module:
+                logger.error(f"导致上面异常的命令：【{content}】")
                 await message_bot.reply(content=f"""\U0001F63F 处理您的命令时出现错误啦
 您可调用的命令
 ===========
@@ -222,6 +227,14 @@ class MyClient(botpy.Client):
             await self.on_group_at_message_create(message)
         else:
             logger.info(f"未呼叫 {bot_name}")
+
+    async def on_direct_message_create(self, message):
+        """
+        频道内私信
+        :param message: 消息对象·
+        :return:
+        """
+        await self.handler_message(message.content, message.author.username, message)
 
     async def on_at_message_create(self, message):
         """
