@@ -65,15 +65,28 @@ async def translate_string(src_lang, tar_lang, translate_str):
         f"{translate_url}&str={translate_str}&srcLang={src_lang}&targetLang={tar_lang}")
 
 
-def command_get_current_time_formatted(string, list_args):
+def clean(history_chats, message_id):
+    """
+    清理消息记录
+    :param history_chats: 这个是消息列表
+    :param message_id: 消息记录对应的 id
+    :return: 处理成功的消息
+    """
+    history_chats[message_id] = TimeBoundedList(
+        ttl=test_config['userMessageMaxTtl'], max_size=test_config['groupMessageMaxLen']
+    )
+    return f"清理空间：【{StrUtils.desensitization(message_id)}】的数据成功！"
+
+
+def command_get_current_time_formatted(string, list_args, message_list_id):
     return f"当前时间：{StrUtils.get_current_time_formatted()}"
 
 
-def command_args_string(string, list_args):
+def command_args_string(string, list_args, message_list_id):
     return f"输入参数：{string}\n参数列表：{list_args}"
 
 
-async def command_translate_string(string, list_args):
+async def command_translate_string(string, list_args, message_list_id):
     if len(list_args) < 3:
         return ("语法错误啦，您应该这样输入哦！\n/翻译 源语言 目标语言 这个就是要翻译的文本\n"
                 "====语言支持====\n"
@@ -109,6 +122,14 @@ class MyClient(botpy.Client):
     def __init__(self, intents1: Intents):
         super().__init__(intents1)
         self.history_chats = {}
+
+        # 追加 clean 命令
+        def command_clean(string, list_args, message_list_id):
+            return clean(self.history_chats, message_list_id)
+
+        command_handler.push_command("清理", command_clean, False)
+
+        # 日志处理
         logger.info(
             f"欢迎您使用 码本API 的 qq机器人服务！\n详细信息请查询：https://www.lingyuzhao.top/b/Article/377388518747589")
         self.lock = asyncio.Lock()  # 添加异步锁防止历史记录冲突
@@ -123,6 +144,10 @@ class MyClient(botpy.Client):
         :param is_channel: 是否是频道聊天
         :return:
         """
+
+        # 解析到 id
+        real_id = CommandHandler.parse_message_id(member_openid, message_bot, is_group, is_channel)
+
         content = StrUtils.trim_at_message(content)
         if content == '':
             await message_bot.reply(content=f"😊 在的在的！")
@@ -132,22 +157,15 @@ class MyClient(botpy.Client):
             if content[0] == '/':
                 # 代表是指令
                 logger.info(f"【info】时间：{date_str}; 玩家:{member_openid}; 命令:{content};")
-                await message_bot.reply(content=f"😊处理成功\n=========\n{await command_handler.handler(content)}")
+                await message_bot.reply(
+                    content=f"😊处理成功\n=========\n{await command_handler.handler(content, real_id)}")
             elif need_hidden_module:
                 # 代表隐藏模型功能
                 logger.warning(f"用户输入了无法处理的指令：{content}")
                 await message_bot.reply(content=f"\U0001F63F 无法处理的指令：{content}")
             else:
-
-                # 获取到群 id 获取不到给 None
-                group_id = None
-                if is_group:
-                    group_id = message_bot.group_openid
-                elif is_channel:
-                    group_id = message_bot.channel_id
-
                 # 保存用户消息
-                hc = self.safe_history_update(openid=member_openid, group_id=group_id, message={
+                hc = self.safe_history_update(real_id=real_id, is_group=is_group, message={
                     "role": "user",
                     "content": f"系统消息：当前系统时间：{date_str}；\n\n用户[{member_openid}]的消息：{content}"
                 })
@@ -162,7 +180,7 @@ class MyClient(botpy.Client):
                     reply_content = StrUtils.get_last_segment(temp['content'])
 
                 # 保存回复消息
-                self.safe_history_update(openid=member_openid, group_id=group_id, message={
+                self.safe_history_update(real_id=real_id, is_group=is_group, message={
                     "role": "assistant",
                     "content": reply_content
                 })
@@ -182,29 +200,28 @@ class MyClient(botpy.Client):
             else:
                 await message_bot.reply(content="\U0001F63F 服务器开小差了，请稍后再试～")
 
-    def safe_history_update(self, openid, group_id, message) -> TimeBoundedList:
+    def safe_history_update(self, real_id, is_group, message) -> TimeBoundedList:
         """
         存储一个用户/群的消息 并返回其对应的 TimeBoundedList 对象
-        :param openid:
-        :param group_id:
+        :param real_id:
+        :param is_group: 是否是群
         :param message:
         :return: 可以直接操作的 TimeBoundedList
         """
-        res = None
-        if group_id is not None:
+        if is_group:
             # 代表是群消息
-            if group_id not in self.history_chats:
-                self.history_chats[group_id] = TimeBoundedList(
+            if real_id not in self.history_chats:
+                self.history_chats[real_id] = TimeBoundedList(
                     ttl=test_config['userMessageMaxTtl'], max_size=test_config['groupMessageMaxLen']
                 )
-            res = self.history_chats[group_id]
+            res = self.history_chats[real_id]
         else:
             # 代表是个人消息
-            if openid not in self.history_chats:
-                self.history_chats[openid] = TimeBoundedList(
+            if real_id not in self.history_chats:
+                self.history_chats[real_id] = TimeBoundedList(
                     ttl=test_config['userMessageMaxTtl'], max_size=test_config['userMessageMaxLen']
                 )
-            res = self.history_chats[openid]
+            res = self.history_chats[real_id]
         res.append(message)
         return res
 

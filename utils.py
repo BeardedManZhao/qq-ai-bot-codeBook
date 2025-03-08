@@ -101,6 +101,16 @@ class HttpClient:
 
 class CommandHandler:
 
+    @staticmethod
+    def parse_message_id(member_openid, message_bot, is_group=False, is_channel=False):
+        # 获取到真正的消息id
+        if is_group:
+            return message_bot.group_openid
+        elif is_channel:
+            return message_bot.channel_id
+        else:
+            return member_openid
+
     def __init__(self, cf, a_command_set):
         """
         初始化并提供处理函数
@@ -113,6 +123,18 @@ class CommandHandler:
         # 编译正则表达式
         self.pattern = re.compile(r'[\s\x00-\x1F\x7F]+')
 
+    def push_command(self, command_key, command_fun, is_async):
+        """
+        追加一个命令到处理器中
+        :param command_key: 命令字符串
+        :param command_fun: 命令对应的处理逻辑
+        :param is_async: 是否需要挂起操作
+        :return:
+        """
+        self.command_fun[command_key] = command_fun
+        if is_async:
+            self.a_command_set.add(command_key)
+
     def get_commands(self):
         # 遍历并打印所有键
         res = []
@@ -121,9 +143,10 @@ class CommandHandler:
             res.append('\n----------\n')
         return ''.join(res)
 
-    async def handler(self, content: str) -> str:
+    async def handler(self, content: str, message_id: str) -> str:
         """
         调用命令
+        :param message_id: 消息id
         :param content: 参数上下文
         :return: 结果
         """
@@ -134,8 +157,8 @@ class CommandHandler:
             args = args[1:]
             args[0] = args[0].strip('\uE000 /')
         if self.is_async(args[0]):
-            return await self.command_fun[args[0]](content[len(args[0]):], args[1:])
-        return self.command_fun[args[0]](content[len(args[0]):], args[1:])
+            return await self.command_fun[args[0]](content[len(args[0]):], args[1:], message_id)
+        return self.command_fun[args[0]](content[len(args[0]):], args[1:], message_id)
 
     def is_async(self, command: str):
         """
@@ -198,3 +221,20 @@ class StrUtils:
         formatted_time = now.strftime("%Y年%m月%d日 %H时%M分%S秒")
 
         return formatted_time
+
+    @staticmethod
+    def desensitization(string: str) -> str:
+        """
+        数据脱敏
+        :param string: 要被脱贫的字符串
+        :return: 脱敏之后的字符串 每隔一个字符会被替换为一个星号
+        """
+        r = []
+        length = 0
+        for c in string:
+            if (length - (length >> 1 << 1)) != 0:
+                r.append('*')
+            else:
+                r.append(c)
+            length += 1
+        return ''.join(r)
