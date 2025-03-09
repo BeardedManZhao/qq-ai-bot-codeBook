@@ -88,7 +88,6 @@ class HttpClient:
         :return: 模型的 json
         """
         data = {
-            "model": "CodeBook-deepSeek",
             "messages": history_chat.get_items(),
             "stream": False
         }
