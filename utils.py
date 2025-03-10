@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import json
 import re
 import time
@@ -142,9 +144,11 @@ class CommandHandler:
             res.append('\n----------\n')
         return ''.join(res)
 
-    async def handler(self, content: str, message_id: str) -> str:
+    async def handler(self, content: str, message_id: str, user_openid: str, is_group: bool) -> str:
         """
         调用命令
+        :param user_openid: 可以用来代表用户个体的 id
+        :param is_group: 是否处于群聊
         :param message_id: 消息id
         :param content: 参数上下文
         :return: 结果
@@ -156,8 +160,8 @@ class CommandHandler:
             args = args[1:]
             args[0] = args[0].strip('\uE000 /')
         if self.is_async(args[0]):
-            return await self.command_fun[args[0]](content[len(args[0]):], args[1:], message_id)
-        return self.command_fun[args[0]](content[len(args[0]):], args[1:], message_id)
+            return await self.command_fun[args[0]](content[len(args[0]):], args[1:], message_id, user_openid, is_group)
+        return self.command_fun[args[0]](content[len(args[0]):], args[1:], message_id, user_openid, is_group)
 
     def is_async(self, command: str):
         """
@@ -237,3 +241,42 @@ class StrUtils:
                 r.append(c)
             length += 1
         return ''.join(r)
+
+    @staticmethod
+    def id_to_short_identifier(user_id_need_handler: str, length: int = 4) -> str:
+        """
+        将长数字 ID 转换为简短标识符
+
+        参数:
+            user_id (int): 用户的长数字 ID
+            length (int): 标识符的长度（默认 4 字符）
+
+        返回:
+            str: 简短标识符
+        """
+        # 将数字 ID 转换为字符串并编码为字节
+        user_id_str = user_id_need_handler.encode('utf-8')
+
+        # 使用 SHA-256 哈希函数生成固定长度的摘要
+        hash_obj = hashlib.sha256(user_id_str)
+        hash_bytes = hash_obj.digest()
+
+        # 使用 Base64 编码将哈希值转换为字符串
+        encoded = base64.urlsafe_b64encode(hash_bytes).decode('utf-8')
+
+        # 截取指定长度的标识符
+        return encoded[:length]
+
+    @staticmethod
+    def who_am_i(user_openid, is_group):
+        """
+        将一个 id 转换为简短好记的用户名
+        :param user_openid: 可以代表用户个体的 id
+        :param is_group: 当前是否处于群，只有群的状态才会缩减自己的用户名
+        :return:
+        """
+        if is_group:
+            # 如果是群组 就要处理一下 避免不认识
+            return StrUtils.id_to_short_identifier(user_openid)
+        else:
+            return user_openid

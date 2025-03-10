@@ -49,6 +49,12 @@ url = (f"https://api.get.lingyuzhao.top:8081/api/chat/?"
        f"&type={test_config['model_server_type']}"
        f"&model={test_config['model_server_model']}")
 
+group_model_url = (f"https://api.get.lingyuzhao.top:8081/api/chat/?"
+                   f"id={server_id}"
+                   f"&sk={server_sk}"
+                   f"&type={test_config['model_server_type_group']}"
+                   f"&model={test_config['model_server_model']}")
+
 # 构建http客户端
 http_client = HttpClient()
 
@@ -78,15 +84,15 @@ def clean(history_chats, message_id):
     return f"清理空间：【{StrUtils.desensitization(message_id)}】的数据成功！"
 
 
-def command_get_current_time_formatted(string, list_args, message_list_id):
+def command_get_current_time_formatted(string, list_args, message_list_id, user_openid, is_group):
     return f"当前时间：{StrUtils.get_current_time_formatted()}"
 
 
-def command_args_string(string, list_args, message_list_id):
+def command_args_string(string, list_args, message_list_id, user_openid, is_group):
     return f"输入参数：{string}\n参数列表：{list_args}"
 
 
-async def command_translate_string(string, list_args, message_list_id):
+async def command_translate_string(string, list_args, message_list_id, user_openid, is_group):
     if len(list_args) < 3:
         return ("语法错误啦，您应该这样输入哦！\n/翻译 源语言 目标语言 这个就是要翻译的文本\n"
                 "====语言支持====\n"
@@ -106,11 +112,26 @@ async def command_translate_string(string, list_args, message_list_id):
     return json.loads(await translate_string(list_args[0], list_args[1], ''.join(list_args[2:])))['message']
 
 
+# 身份查询命令
+def command_who_am_i(string, list_args, message_list_id, user_openid, is_group):
+    """
+    将一个 id 转换为简短好记的用户名
+    :param user_openid: 可以代表用户个体的 id
+    :param string:
+    :param list_args:
+    :param message_list_id: 需要被转换的 id
+    :param is_group: 当前是否处于群，只有群的状态才会缩减自己的用户名
+    :return:
+    """
+    return f"在我的眼中，您的唯一标识【{StrUtils.who_am_i(user_openid, is_group)}】"
+
+
 # 构建指令处理器
 command_handler = CommandHandler({
     "now": command_get_current_time_formatted,
     "testArgs": command_args_string,
-    "翻译": command_translate_string
+    "翻译": command_translate_string,
+    "我是谁": command_who_am_i
 }, {"翻译"})
 
 
@@ -124,7 +145,7 @@ class MyClient(botpy.Client):
         self.history_chats = {}
 
         # 追加 clean 命令
-        def command_clean(string, list_args, message_list_id):
+        def command_clean(string, list_args, message_list_id, user_openid, is_group):
             return clean(self.history_chats, message_list_id)
 
         command_handler.push_command("清理", command_clean, False)
@@ -134,11 +155,12 @@ class MyClient(botpy.Client):
             f"欢迎您使用 码本API 的 qq机器人服务！\n详细信息请查询：https://www.lingyuzhao.top/b/Article/377388518747589")
         self.lock = asyncio.Lock()  # 添加异步锁防止历史记录冲突
 
-    async def handler_message(self, content, member_openid, message_bot, is_group=False, is_channel=False):
+    async def handler_message(self, content, member_openid, user_openid, message_bot, is_group=False, is_channel=False):
         """
         处理消息
         :param content: 消息
-        :param member_openid: 用户id
+        :param member_openid: 可以用来记录消息的 id
+        :param user_openid: 可以用来代表用户个体的 id
         :param message_bot: 消息对象
         :param is_group: 是否是群组聊天
         :param is_channel: 是否是频道聊天
@@ -147,6 +169,9 @@ class MyClient(botpy.Client):
 
         # 解析到 id
         real_id = CommandHandler.parse_message_id(member_openid, message_bot, is_group, is_channel)
+
+        # 计算用户的标识
+        user_mark = StrUtils.who_am_i(user_openid, is_group)
 
         content = StrUtils.trim_at_message(content)
         if content == '':
@@ -158,7 +183,7 @@ class MyClient(botpy.Client):
                 # 代表是指令
                 logger.info(f"【info】时间：{date_str}; 玩家:{member_openid}; 命令:{content};")
                 await message_bot.reply(
-                    content=f"😊处理成功\n=========\n{await command_handler.handler(content, real_id)}")
+                    content=f"😊处理成功\n=========\n{await command_handler.handler(content, real_id, user_openid, is_group)}")
             elif need_hidden_module:
                 # 代表隐藏模型功能
                 logger.warning(f"用户输入了无法处理的指令：{content}")
@@ -167,11 +192,15 @@ class MyClient(botpy.Client):
                 # 保存用户消息
                 hc = self.safe_history_update(real_id=real_id, is_group=is_group, message={
                     "role": "user",
-                    "content": f"系统消息：当前系统时间：{date_str}；\n\n用户[{member_openid}]的消息：{content}"
+                    "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）：【系统消息：当前系统时间：{date_str}】；\n\n----\n\n{content}"
                 })
 
                 # 异步获取模型 API响应
-                resp = await http_client.fetch_model(model_url=url, headers=[], history_chat=hc)
+                if is_group:
+                    resp = await http_client.fetch_model(model_url=group_model_url, headers=[], history_chat=hc)
+                else:
+                    resp = await http_client.fetch_model(model_url=url, headers=[], history_chat=hc)
+
                 temp = resp["message"]
                 if type(temp) is str:
                     reply_content = StrUtils.get_last_segment(temp)
@@ -231,7 +260,10 @@ class MyClient(botpy.Client):
         :param message:
         :return:
         """
-        await self.handler_message(message.content, message.author.member_openid, message, False)
+        await self.handler_message(message.content,
+                                   message.author.member_openid,
+                                   message.author.member_openid,
+                                   message, True)
 
     async def on_group_message_create(self, message):
         """
@@ -251,7 +283,7 @@ class MyClient(botpy.Client):
         :param message: 消息对象·
         :return:
         """
-        await self.handler_message(message.content, message.author.username, message)
+        await self.handler_message(message.content, message.author.username, message.author.username, message)
 
     async def on_at_message_create(self, message):
         """
@@ -259,7 +291,7 @@ class MyClient(botpy.Client):
         :param message:
         :return:
         """
-        await self.handler_message(message.content, message.author.username, message)
+        await self.handler_message(message.content, message.author.username, message.author.username, message)
 
     async def on_message_create(self, message):
         """
@@ -269,7 +301,7 @@ class MyClient(botpy.Client):
         """
         bot_name = test_config['botName']
         if test_config['botName'] in jieba.cut(message.content):
-            await self.handler_message(message.content, message.author.username, message)
+            await self.handler_message(message.content, message.author.username, message.author.username, message)
         else:
             logger.info(f"未呼叫 {bot_name}")
 
@@ -280,7 +312,7 @@ class MyClient(botpy.Client):
         :return:
         """
         await self.handler_message(message.content,
-                                   message.author.user_openid, message)
+                                   message.author.user_openid, message.author.user_openid, message)
 
 
 if __name__ == "__main__":

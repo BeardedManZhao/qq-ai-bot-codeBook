@@ -47,6 +47,8 @@ model_server_sk: '********'
 model_server_id: 49
 # 模型的 type 参数 请参考：https://www.lingyuzhao.top/b/Article/377388518747589#model%20%E5%8F%82%E6%95%B0
 model_server_type: 'cat_neko'
+# 群组模型下的 type 参数
+model_server_type_group: 'cat_neko_group'
 # 模型的 model 参数 请参考：https://www.lingyuzhao.top/b/Article/377388518747589#type%20%E5%8F%82%E6%95%B0
 model_server_model: 'model01'
 # 翻译服务sk
