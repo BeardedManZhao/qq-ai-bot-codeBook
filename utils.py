@@ -23,6 +23,34 @@ class TimeBoundedList:
         """
         self.ttl = ttl
         self.container = deque(maxlen=max_size)  # 使用双端队列存储(插入时间, 数据)的元组
+        self.config = {} # 用于存储此空间的一些临时配置
+
+    def set_config(self, config_name: str, config_value: str):
+        """
+        设置一个配置参数到这里 可能会在各种地方使用
+        :param config_name: 配置名字
+        :param config_value: 配置的数值
+        :return:
+        """
+        self.config[config_name] = config_value
+
+    def get_config(self, config_name: str, def_value: str):
+        """
+        获取到一个配置项目 获取不到就使用默认值
+        :param config_name: 需要使用的配置的名字
+        :param def_value: 获取不到时候的默认数值
+        :return: 结果
+        """
+        if config_name in self.config:
+            return self.config[config_name]
+        else:
+            return def_value
+
+    def set_space_model_url(self, model_type: str):
+        self.set_config("model_url", model_type)
+
+    def get_space_model_url(self, def_value):
+        return self.get_config("model_url", def_value)
 
     def append(self, item):
         """

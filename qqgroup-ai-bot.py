@@ -43,17 +43,22 @@ file_handler.setLevel(logging.DEBUG)
 # 设置您码本API 的id和sk
 server_id = test_config['model_server_id']
 server_sk = test_config['model_server_sk']
-url = (f"https://api.get.lingyuzhao.top:8081/api/chat/?"
-       f"id={server_id}"
-       f"&sk={server_sk}"
-       f"&type={test_config['model_server_type']}"
-       f"&model={test_config['model_server_model']}")
 
-group_model_url = (f"https://api.get.lingyuzhao.top:8081/api/chat/?"
-                   f"id={server_id}"
-                   f"&sk={server_sk}"
-                   f"&type={test_config['model_server_type_group']}"
-                   f"&model={test_config['model_server_model']}")
+
+def create_url(model_type=test_config['model_server_type']):
+    return (f"https://api.get.lingyuzhao.top:8081/api/chat/?"
+            f"id={server_id}"
+            f"&sk={server_sk}"
+            f"&type={model_type}"
+            f"&model={test_config['model_server_model']}")
+
+
+def create_group_model_url(model_type=test_config['model_server_type_group']):
+    return create_url(model_type)
+
+
+url = create_url()
+group_model_url = create_group_model_url()
 
 # 构建http客户端
 http_client = HttpClient()
@@ -115,7 +120,7 @@ async def command_translate_string(string, list_args, message_list_id, user_open
 # 身份查询命令
 def command_who_am_i(string, list_args, message_list_id, user_openid, is_group):
     """
-    将一个 id 转换为简短好记的用户名
+    查自己的用户名
     :param user_openid: 可以代表用户个体的 id
     :param string:
     :param list_args:
@@ -149,6 +154,23 @@ class MyClient(botpy.Client):
             return clean(self.history_chats, message_list_id)
 
         command_handler.push_command("清理", command_clean, False)
+
+        # 设置 model_type 的命令
+        def command_set_model_type(string, list_args, message_list_id, user_openid, is_group):
+            """
+            设置 model_type
+            :param user_openid: 可以代表用户个体的 id
+            :param string:
+            :param list_args:
+            :param message_list_id: 需要被转换的 id
+            :param is_group: 当前是否处于群，只有群的状态才会缩减自己的用户名
+            :return:
+            """
+            command_clean(string, list_args, message_list_id, user_openid, is_group)
+            self.history_chats[message_list_id].set_space_model_url(create_url(list_args[0]))
+            return f"已将您所属空间的类型设置为【{list_args[0]}】\n此操作可能会更改一些行为，但区别不大，若需要还原请使用命令【/清理】"
+
+        command_handler.push_command("设置类型", command_set_model_type, False)
 
         # 日志处理
         logger.info(
@@ -197,9 +219,13 @@ class MyClient(botpy.Client):
 
                 # 异步获取模型 API响应
                 if is_group:
-                    resp = await http_client.fetch_model(model_url=group_model_url, headers=[], history_chat=hc)
+                    resp = await http_client.fetch_model(
+                        model_url=hc.get_space_model_url(group_model_url), headers=[], history_chat=hc
+                    )
                 else:
-                    resp = await http_client.fetch_model(model_url=url, headers=[], history_chat=hc)
+                    resp = await http_client.fetch_model(
+                        model_url=hc.get_space_model_url(url), headers=[], history_chat=hc
+                    )
 
                 temp = resp["message"]
                 if type(temp) is str:
