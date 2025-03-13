@@ -214,6 +214,8 @@ class MyClient(botpy.Client):
         :return:
         """
 
+        print(message_bot)
+
         # 解析到 id
         real_id = CommandHandler.parse_message_id(member_openid, message_bot, is_group, is_channel)
 
@@ -224,10 +226,14 @@ class MyClient(botpy.Client):
         type_file_url = BotUtils.group_attachments_by_type(message_bot)
         # 解析除所有图 url 的base 列表
         images_base = await http_client.urls_to_base64(type_file_url['image'], logger)
+        length_is0 = len(images_base) == 0
         content = StrUtils.trim_at_message(content)
-        if content == '':
+        if content == '' and length_is0:
             await message_bot.reply(content=f"😊 在的在的！")
             return
+        elif content == '' and not length_is0:
+            content = '给你看'
+
         date_str = StrUtils.get_current_time_formatted()
         try:
             if content[0] == '/':
@@ -241,7 +247,7 @@ class MyClient(botpy.Client):
                 await message_bot.reply(content=f"\U0001F63F 无法处理的指令：{content}")
             else:
                 # 看看是否有图数据
-                if len(images_base) == 0:
+                if length_is0:
                     # 保存用户消息
                     hc = self.safe_history_update(real_id=real_id, is_group=is_group, message={
                         "role": "user",
@@ -258,7 +264,9 @@ class MyClient(botpy.Client):
                     # 保存用户消息
                     hc = self.safe_history_update(real_id=real_id, is_group=is_group, message={
                         "role": "user",
-                        "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）：【系统消息：当前系统时间：{date_str}】；\n\n----\n\n系统消息：关于图片的解析结果：{resp['response']}\n\n----\n\n{content}"
+                        "content": f"* 系统消息(注意，这不是用户发送的)：关于图片的解析结果：```\n{resp['response']}```\n\n----\n\n"
+                                   f"* 系统消息(注意，这不是用户发送的)：当前系统时间：{date_str}\n\n----\n\n"
+                                   f"## 用户发送的消息（用户名：{user_mark}）：\n\n----\n\n{content}"
                     })
 
                 # 异步获取模型 API响应
