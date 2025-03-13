@@ -51,6 +51,8 @@ model_server_type: 'cat_neko'
 model_server_type_group: 'cat_neko_group'
 # 模型的 model 参数 请参考：https://www.lingyuzhao.top/b/Article/377388518747589#type%20%E5%8F%82%E6%95%B0
 model_server_model: 'model01'
+# 可处理图像的模型 model 参数 请参考：https://www.lingyuzhao.top/b/Article/377388518747589#type%20%E5%8F%82%E6%95%B0
+model_server_model_image: 'model03'
 # 翻译服务sk
 translate_server_sk: '********'
 # 翻译服务id

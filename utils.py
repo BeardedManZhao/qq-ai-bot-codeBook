@@ -3,7 +3,7 @@ import hashlib
 import json
 import re
 import time
-from collections import deque
+from collections import deque, defaultdict
 from datetime import datetime
 
 import aiohttp
@@ -23,7 +23,7 @@ class TimeBoundedList:
         """
         self.ttl = ttl
         self.container = deque(maxlen=max_size)  # 使用双端队列存储(插入时间, 数据)的元组
-        self.config = {} # 用于存储此空间的一些临时配置
+        self.config = {}  # 用于存储此空间的一些临时配置
 
     def set_config(self, config_name: str, config_value: str):
         """
@@ -86,7 +86,8 @@ class HttpClient:
 
     async def init_session(self):
         if self.session is None:
-            self.session = aiohttp.ClientSession()
+            # verify_ssl 用于防止请求 https 出问题
+            self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=64, verify_ssl=False))
         return self.session
 
     async def fetch_text(self, url: str) -> str:
@@ -119,10 +120,55 @@ class HttpClient:
         """
         data = {
             "messages": history_chat.get_items(),
-            "stream": False
+            "stream": False,
         }
         async with self.session.post(model_url, headers=headers, json=data) as response:
             return json.loads(await response.text())
+
+    async def fetch_model_images(self, model_prompt_url: str, headers, images: list):
+        """
+        :param headers: 头数据
+        :param images: 需要被模型看的图片
+        :param model_prompt_url: 一次性请求使用的 url 用于多模态
+        :return:
+        """
+        data = {
+            # 提取出最新发送的消息
+            "prompt": '请用最详细的语言来描述图！',
+            "stream": False,
+            # 提取出所有图片
+            "images": images
+        }
+        async with self.session.post(model_prompt_url, headers=headers, json=data) as response:
+            return json.loads(await response.text())
+
+    async def urls_to_base64(self, url_list, logger, timeout=10):
+        """
+        将网络图片转换为Base64编码
+
+        参数:
+            url_list (list): 图片的HTTP/HTTPS地址列表
+            timeout (int): 请求超时时间(秒)
+
+        返回:
+            list: Base64编码字符串列表 (格式如: "data:image/png;base64,iVBORw0...")
+                  若某个请求失败，对应位置返回None
+        """
+        res = []
+        for url in url_list:
+            try:
+                async with self.session.get(url.replace("https", "http"), timeout=timeout) as response:
+                    response.raise_for_status()  # 自动处理4xx/5xx错误
+                    image_data = await response.read()  # 异步读取图片数据
+                    # 如果需要添加data URI前缀，可以获取Content-Type：
+                    # content_type = response.headers.get('Content-Type', 'image/png')
+                    b64_str = base64.b64encode(image_data).decode('utf-8')
+                    # encoded_str = f"data:{content_type};base64,{b64_str}"
+                    res.append(b64_str)
+            except Exception as e:
+                if logger is not None:
+                    logger.warning(f"图片转换失败【{str(e)}】：{url_list}")
+        return res
 
     async def close(self):
         await self.session.close()
@@ -308,3 +354,39 @@ class StrUtils:
             return StrUtils.id_to_short_identifier(user_openid)
         else:
             return user_openid
+
+
+class BotUtils:
+
+    @staticmethod
+    def group_attachments_by_type(message) -> defaultdict:
+        """
+        从消息中提取附件属性，并将不同类型的附件分组。
+
+        例如：所有 image/* 类型的附件都分到 "image" 组中。
+
+        参数:
+            message (dict): 包含 'attachments' 属性的消息字典，
+                            'attachments' 的值是一个字符串，表示列表格式。
+
+        返回:
+            dict: 分组后的附件，键为附件类型（如 "image", "video", "audio" 等），
+                  值为对应类型的附件列表。
+        """
+        grouped = defaultdict(list)
+        for attach in message.attachments:
+            content_type = attach.content_type
+            # 按附件的 content_type 分组
+            if content_type.startswith('image/'):
+                group_key = 'image'
+            elif content_type.startswith('video/'):
+                group_key = 'video'
+            elif content_type.startswith('audio/'):
+                group_key = 'audio'
+            else:
+                # 其他类型则取 content_type 的主类别，如 application、text 等
+                group_key = content_type.split('/')[0] if '/' in content_type else content_type
+
+            grouped[group_key].append(attach.url)
+
+        return grouped

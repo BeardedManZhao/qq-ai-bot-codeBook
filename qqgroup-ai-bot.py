@@ -11,7 +11,7 @@ import jieba
 from botpy import Intents
 from botpy.ext.cog_yaml import read
 
-from utils import HttpClient, CommandHandler, StrUtils
+from utils import HttpClient, CommandHandler, StrUtils, BotUtils
 from utils import TimeBoundedList
 
 # 通过sys模块的argv属性获取命令行参数
@@ -45,20 +45,36 @@ server_id = test_config['model_server_id']
 server_sk = test_config['model_server_sk']
 
 
-def create_url(model_type=test_config['model_server_type']):
+def create_url(model_type=test_config['model_server_type'], model=test_config['model_server_model']):
     return (f"https://api.get.lingyuzhao.top:8081/api/chat/?"
             f"id={server_id}"
             f"&sk={server_sk}"
             f"&type={model_type}"
-            f"&model={test_config['model_server_model']}")
+            f"&model={model}")
 
 
-def create_group_model_url(model_type=test_config['model_server_type_group']):
-    return create_url(model_type)
+def create_prompt_url(model_type='none', model=test_config['model_server_model_image']):
+    return (f"https://api.get.lingyuzhao.top:8081/api/chat/generate?"
+            f"id={server_id}"
+            f"&sk={server_sk}"
+            f"&type={model_type}"
+            f"&model={model}")
+
+
+def create_group_model_url(model_type=test_config['model_server_type_group'], model=test_config['model_server_model']):
+    return create_url(model_type, model)
+
+
+def create_group_model_prompt_url(model_type='none',
+                                  model=test_config['model_server_model_image']):
+    return create_prompt_url(model_type, model)
 
 
 url = create_url()
 group_model_url = create_group_model_url()
+
+prompt_url = create_prompt_url()
+prompt_group_model_url = create_group_model_prompt_url()
 
 # 构建http客户端
 http_client = HttpClient()
@@ -167,8 +183,17 @@ class MyClient(botpy.Client):
             :return:
             """
             command_clean(string, list_args, message_list_id, user_openid, is_group)
-            self.history_chats[message_list_id].set_space_model_url(create_url(list_args[0]))
-            return f"已将您所属空间的类型设置为【{list_args[0]}】\n此操作可能会更改一些行为，但区别不大，若需要还原请使用命令【/清理】"
+            if len(list_args) <= 1:
+                self.history_chats[message_list_id].set_space_model_url(
+                    create_url(list_args[0])
+                )
+                return f"已将您所属空间的类型设置为【{list_args[0]}】\n\n此操作可能会更改一些行为，但区别不大，若需要还原请使用命令【/清理】"
+            else:
+                self.history_chats[message_list_id].set_space_model_url(
+                    create_url(list_args[0], list_args[1])
+                )
+                return (f"已将您所属空间的类型设置为【{list_args[0]}】\n\n已将您所属空间的模式设置为【{list_args[1]}】"
+                        f"\n\n此操作可能会更改一些大量行为，若需要还原请使用命令【/清理】")
 
         command_handler.push_command("设置类型", command_set_model_type, False)
 
@@ -195,6 +220,10 @@ class MyClient(botpy.Client):
         # 计算用户的标识
         user_mark = StrUtils.who_am_i(user_openid, is_group)
 
+        # 解析到 附件数据 其是一个 json key是类型 value 是此类型对应的所有 url
+        type_file_url = BotUtils.group_attachments_by_type(message_bot)
+        # 解析除所有图 url 的base 列表
+        images_base = await http_client.urls_to_base64(type_file_url['image'], logger)
         content = StrUtils.trim_at_message(content)
         if content == '':
             await message_bot.reply(content=f"😊 在的在的！")
@@ -211,21 +240,44 @@ class MyClient(botpy.Client):
                 logger.warning(f"用户输入了无法处理的指令：{content}")
                 await message_bot.reply(content=f"\U0001F63F 无法处理的指令：{content}")
             else:
-                # 保存用户消息
-                hc = self.safe_history_update(real_id=real_id, is_group=is_group, message={
-                    "role": "user",
-                    "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）：【系统消息：当前系统时间：{date_str}】；\n\n----\n\n{content}"
-                })
+                # 看看是否有图数据
+                if len(images_base) == 0:
+                    # 保存用户消息
+                    hc = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                        "role": "user",
+                        "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）：【系统消息：当前系统时间：{date_str}】；\n\n----\n\n{content}"
+                    })
+                else:
+                    # 图片解析
+                    resp = await http_client.fetch_model_images(
+                        model_prompt_url=prompt_url,
+                        headers=[],
+                        images=images_base
+                    )
+                    # 保存消息
+                    # 保存用户消息
+                    hc = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                        "role": "user",
+                        "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）：【系统消息：当前系统时间：{date_str}】；\n\n----\n\n系统消息：关于图片的解析结果：{resp['response']}\n\n----\n\n{content}"
+                    })
 
                 # 异步获取模型 API响应
                 if is_group:
                     resp = await http_client.fetch_model(
-                        model_url=hc.get_space_model_url(group_model_url), headers=[], history_chat=hc
+                        model_url=hc.get_space_model_url(group_model_url),
+                        headers=[],
+                        history_chat=hc,
                     )
                 else:
                     resp = await http_client.fetch_model(
-                        model_url=hc.get_space_model_url(url), headers=[], history_chat=hc
+                        model_url=hc.get_space_model_url(url),
+                        headers=[],
+                        history_chat=hc,
                     )
+
+                if 'error' in resp:
+                    logger.warning(f"模型处理失败：{resp}")
+                    return
 
                 temp = resp["message"]
                 if type(temp) is str:
