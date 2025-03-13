@@ -214,8 +214,6 @@ class MyClient(botpy.Client):
         :return:
         """
 
-        print(message_bot)
-
         # 解析到 id
         real_id = CommandHandler.parse_message_id(member_openid, message_bot, is_group, is_channel)
 
