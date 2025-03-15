@@ -73,8 +73,8 @@ def create_group_model_prompt_url(model_type='none',
 url = create_url()
 group_model_url = create_group_model_url()
 
-prompt_url = create_prompt_url()
-prompt_group_model_url = create_group_model_prompt_url()
+prompt_url = create_prompt_url(model_type='image_parse')
+prompt_group_model_url = create_group_model_prompt_url(model_type='image_parse')
 
 # 构建http客户端
 http_client = HttpClient()
@@ -230,7 +230,7 @@ class MyClient(botpy.Client):
             await message_bot.reply(content=f"😊 在的在的！")
             return
         elif content == '' and not length_is0:
-            content = '给你看'
+            content = '给你看我发的图片'
 
         date_str = StrUtils.get_current_time_formatted()
         try:
@@ -260,11 +260,14 @@ class MyClient(botpy.Client):
                     )
                     # 保存消息
                     # 保存用户消息
+                    self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                        "role": "user",
+                        "content": f"# 系统消息(注意，这不是用户发送的)：关于图片的解析结果：\n{resp['response']}"
+                    })
                     hc = self.safe_history_update(real_id=real_id, is_group=is_group, message={
                         "role": "user",
-                        "content": f"* 系统消息(注意，这不是用户发送的)：关于图片的解析结果：```\n{resp['response']}```\n\n----\n\n"
-                                   f"* 系统消息(注意，这不是用户发送的)：当前系统时间：{date_str}\n\n----\n\n"
-                                   f"## 用户发送的消息（用户名：{user_mark}）：\n\n----\n\n{content}"
+                        "content": f"* 系统消息(注意，这不是用户发送的)：当前系统时间：{date_str}\n\n----\n\n"
+                                   f"# 用户发送的消息（用户名：{user_mark}）：\n\n----\n\n{content}"
                     })
 
                 # 异步获取模型 API响应
