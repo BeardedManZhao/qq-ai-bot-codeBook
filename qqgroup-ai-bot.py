@@ -249,7 +249,12 @@ class MyClient(botpy.Client):
                     # 保存用户消息
                     hc = self.safe_history_update(real_id=real_id, is_group=is_group, message={
                         "role": "user",
-                        "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）：【系统消息：当前系统时间：{date_str}】；\n\n----\n\n{content}"
+                        "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）：【系统消息：当前系统时间：{date_str}】；\n\n----\n\n{content}",
+                        "options": {
+                            "temperature": 0.6,
+                            "top_p": 0.85,
+                            "repeat_penalty": 1.3
+                        }
                     })
                 else:
                     # 图片解析
@@ -259,15 +264,19 @@ class MyClient(botpy.Client):
                         images=images_base
                     )
                     # 保存消息
-                    # 保存用户消息
-                    self.safe_history_update(real_id=real_id, is_group=is_group, message={
-                        "role": "user",
-                        "content": f"# 系统消息(注意，这不是用户发送的)：关于图片的解析结果：\n{resp['response']}"
-                    })
                     hc = self.safe_history_update(real_id=real_id, is_group=is_group, message={
                         "role": "user",
                         "content": f"* 系统消息(注意，这不是用户发送的)：当前系统时间：{date_str}\n\n----\n\n"
                                    f"# 用户发送的消息（用户名：{user_mark}）：\n\n----\n\n{content}"
+                    })
+                    # 保存图像消息
+                    self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                        "role": "user",
+                        "content": f"# 系统消息(注意，这不是用户发送的)\n"
+                                   f"> 当前系统时间：{date_str}"
+                                   f"\n\n----\n\n"
+                                   f"## 关于图片的解析结果：\n{resp['response']}\n\n"
+                                   f"# 用户消息(这个是用户发送的消息哦)\n{content}"
                     })
 
                 # 异步获取模型 API响应
