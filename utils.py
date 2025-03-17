@@ -46,11 +46,15 @@ class TimeBoundedList:
         else:
             return def_value
 
-    def set_space_model_url(self, model_type: str):
-        self.set_config("model_url", model_type)
+    def set_space_model_url(self, model_url: str, model_group_url: str):
+        self.set_config("model_url", model_url)
+        self.set_config("model_group_url", model_group_url)
 
     def get_space_model_url(self, def_value):
         return self.get_config("model_url", def_value)
+
+    def get_space_model_group_url(self, def_value):
+        return self.get_config("model_group_url", def_value)
 
     def append(self, item):
         """

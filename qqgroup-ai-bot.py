@@ -185,12 +185,12 @@ class MyClient(botpy.Client):
             command_clean(string, list_args, message_list_id, user_openid, is_group)
             if len(list_args) <= 1:
                 self.history_chats[message_list_id].set_space_model_url(
-                    create_url(list_args[0])
+                    create_url(list_args[0]), create_group_model_url(list_args[0] + '_group')
                 )
                 return f"已将您所属空间的类型设置为【{list_args[0]}】\n\n此操作可能会更改一些行为，但区别不大，若需要还原请使用命令【/清理】"
             else:
                 self.history_chats[message_list_id].set_space_model_url(
-                    create_url(list_args[0], list_args[1])
+                    create_url(list_args[0], list_args[1]), create_group_model_url(list_args[0] + '_group', list_args[1])
                 )
                 return (f"已将您所属空间的类型设置为【{list_args[0]}】\n\n已将您所属空间的模式设置为【{list_args[1]}】"
                         f"\n\n此操作可能会更改一些大量行为，若需要还原请使用命令【/清理】")
