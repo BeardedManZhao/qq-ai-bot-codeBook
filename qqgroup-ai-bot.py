@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import traceback
+from typing import Any
 
 import botpy
 import jieba
@@ -190,7 +191,8 @@ class MyClient(botpy.Client):
                 return f"已将您所属空间的类型设置为【{list_args[0]}】\n\n此操作可能会更改一些行为，但区别不大，若需要还原请使用命令【/清理】"
             else:
                 self.history_chats[message_list_id].set_space_model_url(
-                    create_url(list_args[0], list_args[1]), create_group_model_url(list_args[0] + '_group', list_args[1])
+                    create_url(list_args[0], list_args[1]),
+                    create_group_model_url(list_args[0] + '_group', list_args[1])
                 )
                 return (f"已将您所属空间的类型设置为【{list_args[0]}】\n\n已将您所属空间的模式设置为【{list_args[1]}】"
                         f"\n\n此操作可能会更改一些大量行为，若需要还原请使用命令【/清理】")
@@ -247,7 +249,7 @@ class MyClient(botpy.Client):
                 # 看看是否有图数据
                 if length_is0:
                     # 保存用户消息
-                    hc = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                    hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
                         "role": "user",
                         "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）：【系统消息：当前系统时间：{date_str}】；\n\n----\n\n{content}",
                         "options": {
@@ -264,7 +266,7 @@ class MyClient(botpy.Client):
                         images=images_base
                     )
                     # 保存消息
-                    hc = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                    hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
                         "role": "user",
                         "content": f"* 系统消息(注意，这不是用户发送的)：当前系统时间：{date_str}\n\n----\n\n"
                                    f"# 用户发送的消息（用户名：{user_mark}）：\n\n----\n\n{content}"
@@ -310,7 +312,12 @@ class MyClient(botpy.Client):
                     "content": reply_content
                 })
 
-                # 异步发送回复
+                # 处理回复 并 异步发送回复
+                if is_first and is_group:
+                    reply_content += f'\n\n----\n\n为您分配的用户名【{user_mark}】'
+                elif is_first:
+                    reply_content += '\n\n----\n\n系统消息：关于更多信息：https://www.lingyuzhao.top/b/Article/377388518747589'
+
                 await message_bot.reply(content=reply_content)
                 logger.info(f"【ok】时间：{date_str}; 玩家:{member_openid}; 消息:{content}; 回复:{reply_content}")
 
@@ -323,9 +330,10 @@ class MyClient(botpy.Client):
 ===========
 {command_handler.get_commands()}""")
             else:
-                await message_bot.reply(content="\U0001F63F 服务器开小差了，请稍后再试～")
+                await message_bot.reply(content="\U0001F63F 服务器开小差了，请稍后再试～\n============\n"
+                                                "更多信息请查询：https://www.lingyuzhao.top/b/Article/-3439099015597393")
 
-    def safe_history_update(self, real_id, is_group, message) -> TimeBoundedList:
+    def safe_history_update(self, real_id, is_group, message) -> tuple[Any, bool]:
         """
         存储一个用户/群的消息 并返回其对应的 TimeBoundedList 对象
         :param real_id:
@@ -333,12 +341,14 @@ class MyClient(botpy.Client):
         :param message:
         :return: 可以直接操作的 TimeBoundedList
         """
+        is_first = False
         if is_group:
             # 代表是群消息
             if real_id not in self.history_chats:
                 self.history_chats[real_id] = TimeBoundedList(
                     ttl=test_config['userMessageMaxTtl'], max_size=test_config['groupMessageMaxLen']
                 )
+                is_first = True
             res = self.history_chats[real_id]
         else:
             # 代表是个人消息
@@ -346,9 +356,10 @@ class MyClient(botpy.Client):
                 self.history_chats[real_id] = TimeBoundedList(
                     ttl=test_config['userMessageMaxTtl'], max_size=test_config['userMessageMaxLen']
                 )
+                is_first = True
             res = self.history_chats[real_id]
         res.append(message)
-        return res
+        return res, is_first
 
     async def on_group_at_message_create(self, message):
         """
