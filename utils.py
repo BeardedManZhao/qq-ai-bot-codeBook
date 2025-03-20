@@ -114,20 +114,54 @@ class HttpClient:
         except aiohttp.ClientError as e:
             return f"请求发生错误: {e}"
 
-    async def fetch_model(self, model_url: str, headers, history_chat: TimeBoundedList) -> json:
+    async def fetch_model(self, model_url: str, headers, history_chat: TimeBoundedList, stream: bool = False,
+                          stream_fun=None):
         """
         向模型发起对话请求
+        :param stream_fun: 如果是使用的流，则数据会直接传递到此函数中
+        :param stream: 是否要使用流式数据
         :param model_url: 模型API 的 url
         :param headers: 头数据
         :param history_chat: 聊天历史消息列表
-        :return: 模型的 json
+        :return: 模型的 json 或者 None（对于流式数据）
         """
         data = {
             "messages": history_chat.get_items(),
-            "stream": False,
+            "stream": stream,
         }
+
         async with self.session.post(model_url, headers=headers, json=data) as response:
-            return json.loads(await response.text())
+            think_string = []
+            res_list = []
+            if stream:
+                # 如果是流式处理，逐行读取并解析响应
+                in_think = False
+                async for line in response.content:
+                    if line:
+                        try:
+                            decoded_line = line.decode('utf-8')
+                            if decoded_line:  # 确保非空
+                                res = json.loads(line.decode('utf-8'))['message']  # 解码并打印每一条消息
+                                if type(res) is str:
+                                    await stream_fun(res, False, True)
+                                else:
+                                    res_string = res['content']
+                                    if in_think:
+                                        think_string.append(res_string)
+                                    if res_string == '<think>':
+                                        in_think = True
+                                    elif res_string == '</think>':
+                                        in_think = False
+                                    elif not in_think:
+                                        res_list.append(res_string)
+                        except json.JSONDecodeError:
+                            continue  # 忽略无法解析为JSON的数据
+                # 迭代结束  最后的 布尔代表是否结束
+                await stream_fun(res_list, think_string)
+                return None  # 流式处理不返回最终结果
+            else:
+                # 如果不是流式处理，直接返回json解析结果
+                return json.loads(await response.text())
 
     async def fetch_model_images(self, model_prompt_url: str, headers, images: list):
         """
