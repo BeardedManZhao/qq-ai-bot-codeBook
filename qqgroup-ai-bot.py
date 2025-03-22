@@ -12,6 +12,7 @@ import jieba
 from botpy import Intents
 from botpy.ext.cog_yaml import read
 
+from lyMblApi import LyMblApiJvm
 from utils import HttpClient, CommandHandler, StrUtils, BotUtils
 from utils import TimeBoundedList
 
@@ -76,6 +77,13 @@ group_model_url = create_group_model_url()
 
 prompt_url = create_prompt_url(model_type='image_parse')
 prompt_group_model_url = create_group_model_prompt_url(model_type='image_parse')
+
+tools_url = create_url(model_type='none', model='model02')
+
+# 初始化 jvm
+lyMblApi = None
+if 'jvm_dll' in test_config and 'jvm_jars' in test_config:
+    lyMblApi = LyMblApiJvm(test_config['jvm_dll'], test_config['jvm_jars'])
 
 # 构建http客户端
 http_client = HttpClient()
@@ -246,6 +254,7 @@ class MyClient(botpy.Client):
             content = '给你看我发的图片'
 
         date_str = StrUtils.get_current_time_formatted()
+
         try:
             if content[0] == '/':
                 # 代表是指令
@@ -259,16 +268,39 @@ class MyClient(botpy.Client):
             else:
                 # 看看是否有图数据
                 if length_is0:
-                    # 保存用户消息
-                    hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
-                        "role": "user",
-                        "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）：【系统消息：当前系统时间：{date_str}】；\n\n----\n\n{content}",
-                        "options": {
-                            "temperature": 0.6,
-                            "top_p": 0.85,
-                            "repeat_penalty": 1.3
-                        }
-                    })
+                    # 查询是否需要调用 tool
+                    tools_res = ''
+                    if lyMblApi is not None:
+                        # 需要调用
+                        if real_id in self.history_chats:
+                            tools_res = await http_client.fetch_tools_model(
+                                user_openid, tools_url, [], self.history_chats[real_id], content, lyMblApi
+                            )
+                        else:
+                            tools_res = await http_client.fetch_tools_model(
+                                user_openid, tools_url, [], [], content, lyMblApi
+                            )
+                    if len(tools_res) != 0:
+                        # 函数调用结果
+                        logger.info("触发了函数调用：" + tools_res)
+                        hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                            "role": "user",
+                            "content": f"# 系统消息（触发了函数调用，请你汇总一下，并结合后面的用户消息来回复用户）：{tools_res}\n\n#用户消息：\n{content}"
+                        })
+                    else:
+                        # 保存用户消息
+                        hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                            "role": "user",
+                            "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）："
+                                       f"【系统消息：当前系统时间：{date_str}】；\n"
+                                       f"{tools_res}\n"
+                                       f"\n----\n\n{content}",
+                            "options": {
+                                "temperature": 0.6,
+                                "top_p": 0.85,
+                                "repeat_penalty": 1.3
+                            }
+                        })
                 else:
                     # 图片解析
                     resp = await http_client.fetch_model_images(
@@ -286,7 +318,7 @@ class MyClient(botpy.Client):
                     self.safe_history_update(real_id=real_id, is_group=is_group, message={
                         "role": "user",
                         "content": f"# 系统消息(注意，这不是用户发送的)\n"
-                                   f"> 当前系统时间：{date_str}"
+                                   f"> 当前系统时间：{date_str}\n"
                                    f"\n\n----\n\n"
                                    f"## 关于图片的解析结果：\n{resp['response']}\n\n"
                                    f"# 用户消息(这个是用户发送的消息哦)\n{content}"
@@ -580,6 +612,9 @@ class MyClient(botpy.Client):
 if __name__ == "__main__":
     import asyncio
 
-    intents = botpy.Intents(public_messages=True, public_guild_messages=True, direct_message=True)
-    client = MyClient(intents1=intents)
-    client.run(appid=test_config["appid"], secret=test_config["secret"])
+    try:
+        intents = botpy.Intents(public_messages=True, public_guild_messages=True, direct_message=True)
+        client = MyClient(intents1=intents)
+        client.run(appid=test_config["appid"], secret=test_config["secret"])
+    finally:
+        lyMblApi.close()

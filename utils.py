@@ -8,6 +8,8 @@ from datetime import datetime
 
 import aiohttp
 
+from tools import create_tools
+
 
 class TimeBoundedList:
     """
@@ -113,6 +115,19 @@ class HttpClient:
                 return text
         except aiohttp.ClientError as e:
             return f"请求发生错误: {e}"
+
+    async def fetch_tools_model(self, user_open_id, model_url: str, headers, history_chat: TimeBoundedList | list,
+                                input_content, ly_mbl_jvm):
+        if type(history_chat) is TimeBoundedList:
+            messages = history_chat.get_items()
+        else:
+            messages = history_chat
+        messages.append({
+            "role": "user",
+            "content": input_content
+        })
+        async with self.session.post(model_url, headers=headers, json=create_tools(messages)) as response:
+            return ly_mbl_jvm.json_cell(user_open_id, json.loads(await response.text()))
 
     async def fetch_model(self, model_url: str, headers, history_chat: TimeBoundedList, stream: bool = False,
                           stream_fun=None):

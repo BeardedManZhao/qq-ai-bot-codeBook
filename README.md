@@ -21,7 +21,7 @@
 ### 1.2 安装依赖
 
 ```shell
-pip install qq-botpy jieba aiohttp
+pip install qq-botpy jieba aiohttp jpype1
 ```
 
 ## 2.配置文件
@@ -57,6 +57,11 @@ model_server_model_image: 'model03'
 translate_server_sk: '********'
 # 翻译服务id
 translate_server_id: 46
+# jvm 的 jar 插件列表
+jvm_jars:
+  - "/opt/app/qq-neko/qq-ai-bot-codeBook/lib/lyMbl-shell.jar"
+# jvm 的dll库文件路径 如果启用此路径，则机器人会获得更丰富的功能 如发送邮件
+# jvm_dll: "/opt/app/jdk-17.0.12/lib/server/libjvm.so"
 ```
 
 ## 启动项目
