@@ -175,8 +175,12 @@ class HttpClient:
                 await stream_fun(res_list, think_string)
                 return None  # 流式处理不返回最终结果
             else:
-                # 如果不是流式处理，直接返回json解析结果
-                return json.loads(await response.text())
+                json_text = await response.text()
+                try:
+                    # 如果不是流式处理，直接返回json解析结果
+                    return json.loads(json_text)
+                except json.decoder.JSONDecodeError:
+                    raise ValueError("模型的回复json解析操作出现问题了！【" + json_text + '】')
 
     async def fetch_model_images(self, model_prompt_url: str, headers, images: list):
         """

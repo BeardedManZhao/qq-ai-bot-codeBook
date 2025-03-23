@@ -283,17 +283,31 @@ class MyClient(botpy.Client):
                     if len(tools_res) != 0:
                         # 函数调用结果
                         logger.info("触发了函数调用：" + tools_res)
-                        hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
-                            "role": "user",
-                            "content": f"# 系统消息（触发了函数调用，请你汇总一下，并结合后面的用户消息来回复用户）：{tools_res}\n\n#用户消息：\n{content}"
-                        })
+                        if '失败' not in tools_res:
+                            hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                                "role": "user",
+                                "content": f"# 系统消息(注意，这不是用户发送的)\n"
+                                           f"> 当前系统时间：{date_str}\n"
+                                           f"> 请尽可能详细的将此结果回复给用户\n"
+                                           f"\n\n----\n\n"
+                                           f"## 关于用户触发函数调用的调用结果\n"
+                                           f"{tools_res}\n\n"
+                                           f"# 用户消息(这个是用户发送的消息哦，请结合此信息来将上面的结果回复给用户)\n{content}"
+                            })
+                        else:
+                            # 这是执行命令 但是执行错误了，所以抛出异常信息
+                            self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                                "role": "assistant",
+                                "content": tools_res
+                            })
+                            await message_bot.reply(content=tools_res)
+                            return
                     else:
                         # 保存用户消息
                         hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
                             "role": "user",
                             "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）："
                                        f"【系统消息：当前系统时间：{date_str}】；\n"
-                                       f"{tools_res}\n"
                                        f"\n----\n\n{content}",
                             "options": {
                                 "temperature": 0.6,

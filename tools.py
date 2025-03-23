@@ -7,11 +7,11 @@ tools = [
                 "properties": {
                     "ip": {
                         "type": "string",
-                        "description": "这个是目标的 ip 或 域名，不可以为空"
+                        "description": "这个是目标的 ip 或 域名"
                     },
                     "port": {
                         "type": "string",
-                        "description": "这个是目标的 端口 不可以为空"
+                        "description": "这个是目标的 端口 不可以为空，默认是 80"
                     }
                 }
             }
