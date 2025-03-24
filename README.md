@@ -69,3 +69,7 @@ jvm_jars:
 ```shell
 python qqgroup-ai-bot.py <配置文件路径>
 ```
+
+## 实机演示视频
+
+<iframe src="//player.bilibili.com/player.html?isOutside=true&aid=114209757075912&bvid=BV1bMXaYGEjA&cid=29022160640&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>
