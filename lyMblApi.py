@@ -25,7 +25,7 @@ class LyMblApiJvm:
     def run(self, user_open_id, option_name, args):
         if self.ready:
             # 导入 Java 类
-            from org.example import Main  # 替换为你的实际包名和类名
+            from top.lingyuzhao.lyMbl.shell import Main  # 替换为你的实际包名和类名
             return Main.run(user_open_id, option_name, args)
 
     def is_ready(self):

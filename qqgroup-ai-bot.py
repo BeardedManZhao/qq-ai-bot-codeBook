@@ -286,7 +286,7 @@ class MyClient(botpy.Client):
                         if '失败' not in tools_res:
                             hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
                                 "role": "user",
-                                "content": f"# 系统消息(注意，这不是用户发送的)\n"
+                                "content": f"# 系统消息(注意，这不是用户发送的，请不要对此内容做过多描述，尤其是数字类的参数，这可以避免错误描述)\n"
                                            f"> 当前系统时间：{date_str}\n"
                                            f"> 请尽可能详细的将此结果回复给用户\n"
                                            f"\n\n----\n\n"

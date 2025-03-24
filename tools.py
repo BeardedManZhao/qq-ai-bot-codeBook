@@ -2,7 +2,7 @@ tools = [
     {
         "type": "function",
         "function": {
-            "name": "测试目标连通性",
+            "name": "测试目标网络状态",
             "description": "使用 TCP 测试指定的域名与端口的连通性", "parameters": {
                 "properties": {
                     "ip": {
@@ -61,10 +61,64 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "发送文章",
+            "description": "将一个文章发送到码本录网站中",
+            "parameters": {
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "这个是文章的标题"
+                    },
+                    "desc": {
+                        "type": "string",
+                        "description": "这个是文章的描述"
+                    },
+                    "topic": {
+                        "type": "string",
+                        "description": "这个是文章所属的专题名称"
+                    },
+                    "data": {
+                        "type": "string",
+                        "description": "这个是文章的 markdown 内容"
+                    },
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             # 填写技能信息
             "name": "查LY码本录身份",
             # 填写技能描述
             "description": "查询当前登录 LY码本录 的 用户名", "parameters": {}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            # 填写技能信息
+            "name": "当前码本盘镜的空间",
+            # 填写技能描述
+            "description": "查询当前登录用户的码本盘镜 空间 使用情况", "parameters": {}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            # 填写技能信息
+            "name": "帮助/查看功能列表",
+            # 填写技能描述
+            "description": "查询系统支持的功能 和 帮助信息", "parameters": {}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            # 填写技能信息
+            "name": "退出登录",
+            # 填写技能描述
+            "description": "让当前用户退出登录状态", "parameters": {}
         }
     }
 ]
