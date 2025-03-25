@@ -61,6 +61,8 @@ class LyMblApiJvm:
                 if name not in fun_params:
                     return '\n系统消息：不支持的操作:' + name
                 for p_name in fun_params[name]:
+                    if p_name not in arguments:
+                        continue
                     arg = arguments[p_name]
                     if len(arg) != 0:
                         args.append(arg)

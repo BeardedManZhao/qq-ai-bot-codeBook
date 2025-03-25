@@ -173,7 +173,20 @@ class MyClient(botpy.Client):
     def __init__(self, intents1: Intents):
         super().__init__(intents1)
         self.history_chats = {}
-        self.handler_message_fun = self.handler_message
+        self.handler_message_fun = self.handler_message_stream
+
+        # 追加消息历史查询命令
+        def command_history(string, list_args, message_list_id, user_openid, is_group):
+            res = []
+            for line in self.history_chats[message_list_id].get_items():
+                if line['role'] == 'user':
+                    res.append("*用户*\n")
+                else:
+                    res.append("*neko*\n")
+                res.append(line['content'])
+                res.append('\n\n###########\n\n')
+            return ''.join(res)
+        command_handler.push_command("历史消息", command_history, False)
 
         # 追加 clean 命令
         def command_clean(string, list_args, message_list_id, user_openid, is_group):
@@ -220,7 +233,11 @@ class MyClient(botpy.Client):
 
         # 日志处理
         logger.info(
-            f"欢迎您使用 码本API 的 qq机器人服务！\n详细信息请查询：https://www.lingyuzhao.top/b/Article/-2321317989405261")
+            f"欢迎您使用 码本API 的 qq机器人服务！\n"
+            f"qq机器人交流群：938229786\n"
+            f"neko开源交流群：931546838\n"
+            f"详细信息请查询：https://www.lingyuzhao.top/b/Article/-2321317989405261"
+        )
         self.lock = asyncio.Lock()  # 添加异步锁防止历史记录冲突
 
     async def handler_message(self, content, member_openid, user_openid, message_bot, is_group=False, is_channel=False):
@@ -373,7 +390,12 @@ class MyClient(botpy.Client):
                 if is_first and is_group:
                     reply_content += f'\n\n----\n\n系统消息：群空间初始化完毕。'
                 elif is_first:
-                    reply_content += '\n\n----\n\n系统消息：关于更多信息，https://www.lingyuzhao.top/b/Article/-2321317989405261'
+                    reply_content += ('\n\n----\n\n系统消息：\n'
+                                      f"欢迎您使用 码本API 的 qq机器人服务！\n"
+                                      f"qq机器人交流群：938229786\n"
+                                      f"neko开源交流群：931546838\n"
+                                      '关于更多信息，https://www.lingyuzhao.top/b/Article/-2321317989405261'
+                                      )
 
                 await message_bot.reply(content=reply_content)
                 logger.info(
@@ -470,14 +492,14 @@ class MyClient(botpy.Client):
                     })
 
                 # 准备一个函数 用来处理流数据
-                async def handler_data(data_string, think_string):
+                async def handler_data(reply_content, think_string, count):
                     """
                     处理流的数据汇总的结果
-                    :param data_string: 回复数据 其中每个词占一个元素
-                    :param think_string: 思考数据 其中每个词占一个元素
+                    :param count: 当前回复消息的编号
+                    :param reply_content: 回复数据 的字符串
+                    :param think_string: 思考数据 list 其中每个词占一个元素
                     """
-                    reply_content = ''.join(data_string)
-                    # 通过api发送回复消息
+                    # # 通过api发送回复消息
                     # if is_channel:
                     #     await self.api.post_message(
                     #         channel_id=real_id,
@@ -488,22 +510,29 @@ class MyClient(botpy.Client):
                     #     await self.api.post_group_message(
                     #         group_openid=real_id,
                     #         msg_id=message_bot.id,
-                    #         content=reply_content
+                    #         content=reply_content,
+                    #         msg_seq=count
                     #     )
                     # else:
                     #     await self.api.post_c2c_message(
                     #         openid=real_id,
                     #         msg_id=message_bot.id,
-                    #         content=reply_content
+                    #         content=reply_content,
+                    #         msg_seq=str(count)
                     #     )
 
                     # 开始存储数据，数据保存到历史记录
                     self.safe_history_update(real_id=real_id, is_group=is_group, message={
                         "role": "assistant",
                         "content": reply_content
-                    })
-                    logger.info(
-                        f"【ok】时间：{date_str}; realId:{real_id}; 玩家:{user_mark}; 消息:{content}; 回复:{reply_content}")
+                    }, append=count == 1)
+                    await message_bot.reply(content=reply_content, msg_seq=str(count))
+                    if count == 1:
+                        logger.info(
+                            f"【ok】时间：{date_str}; realId:{real_id}; 玩家:{user_mark}; 消息:{content}; 回复:{reply_content}")
+                    else:
+                        logger.info(
+                            f"玩家:{user_mark}; 回复:{reply_content}")
 
                 # 异步获取模型 API响应
                 if is_group:
@@ -534,9 +563,10 @@ class MyClient(botpy.Client):
                 await message_bot.reply(content="\U0001F63F 服务器开小差了，请稍后再试～\n============\n"
                                                 "更多信息请查询：https://www.lingyuzhao.top/b/Article/-2321317989405261")
 
-    def safe_history_update(self, real_id, is_group, message) -> tuple[Any, bool]:
+    def safe_history_update(self, real_id, is_group, message, append=True) -> tuple[Any, bool]:
         """
         存储一个用户/群的消息 并返回其对应的 TimeBoundedList 对象
+        :param append: 是否要在消息列表里追加 如果选择False 就是要在最新的消息字符串上追加 而不是列表
         :param real_id:
         :param is_group: 是否是群
         :param message:
@@ -559,7 +589,10 @@ class MyClient(botpy.Client):
                 )
                 is_first = True
             res = self.history_chats[real_id]
-        res.append(message)
+        if append:
+            res.append(message)
+        else:
+            res.set_last_value_append(message)
         return res, is_first
 
     async def on_group_at_message_create(self, message):
@@ -599,7 +632,8 @@ class MyClient(botpy.Client):
         :param message:
         :return:
         """
-        await self.handler_message_fun(message.content, message.author.username, message.author.username, message)
+        await self.handler_message_fun(message.content, message.author.username, message.author.username, message,
+                                       False, True)
 
     async def on_message_create(self, message):
         """
@@ -609,7 +643,8 @@ class MyClient(botpy.Client):
         """
         bot_name = test_config['botName']
         if test_config['botName'] in jieba.cut(message.content):
-            await self.handler_message_fun(message.content, message.author.username, message.author.username, message)
+            await self.handler_message_fun(message.content, message.author.username, message.author.username, message,
+                                           False, True)
         else:
             logger.info(f"未呼叫 {bot_name}")
 

@@ -67,6 +67,17 @@ class TimeBoundedList:
         # 这是添加时间以及元素本身的元组
         self.container.append((time.time(), item))
 
+    def set_last_value_append(self, new_string):
+        """
+        将最新添加的数值进行修改 修改方法就是直接在值上追加新的字符串
+        :param new_string 新的字符串
+        """
+        # 弹出最新添加的元素
+        latest_element = self.container.pop()
+        latest_element[1]['content'] += new_string['content']
+        # 追加最新的元素
+        self.container.append(latest_element)
+
     def get_items(self):
         """
         获取当前有效的所有元素。
@@ -130,9 +141,10 @@ class HttpClient:
             return ly_mbl_jvm.json_cell(user_open_id, json.loads(await response.text()))
 
     async def fetch_model(self, model_url: str, headers, history_chat: TimeBoundedList, stream: bool = False,
-                          stream_fun=None):
+                          stream_fun=None, think_mark='think'):
         """
         向模型发起对话请求
+        :param think_mark: 思考标记 在标记中的数据将不会被发送
         :param stream_fun: 如果是使用的流，则数据会直接传递到此函数中
         :param stream: 是否要使用流式数据
         :param model_url: 模型API 的 url
@@ -144,10 +156,12 @@ class HttpClient:
             "messages": history_chat.get_items(),
             "stream": stream,
         }
+        think_start, think_end = f"<{think_mark}>", f"</{think_mark}>"
 
         async with self.session.post(model_url, headers=headers, json=data) as response:
             think_string = []
             res_list = []
+            count = 1
             if stream:
                 # 如果是流式处理，逐行读取并解析响应
                 in_think = False
@@ -158,21 +172,34 @@ class HttpClient:
                             if decoded_line:  # 确保非空
                                 res = json.loads(line.decode('utf-8'))['message']  # 解码并打印每一条消息
                                 if type(res) is str:
-                                    await stream_fun(res, False, True)
+                                    await stream_fun(res, [])
                                 else:
                                     res_string = res['content']
-                                    if in_think:
-                                        think_string.append(res_string)
-                                    if res_string == '<think>':
-                                        in_think = True
-                                    elif res_string == '</think>':
+                                    if think_end in res_string:
                                         in_think = False
-                                    elif not in_think:
+                                    elif think_start in res_string:
+                                        in_think = True
+
+                                    # 不是在 think 且 token 有数据
+                                    elif not in_think and len(res_string) != 0:
                                         res_list.append(res_string)
+                                        if count <= 4 and '\n' in res_string:
+                                            # 代表是换段 同时消息数量小于4 可以继续发送
+                                            reply_content = ''.join(res_list).strip()
+                                            if len(reply_content) != 0:
+                                                await stream_fun(reply_content, think_string, count)
+                                                res_list = []
+                                                count += 1
                         except json.JSONDecodeError:
                             continue  # 忽略无法解析为JSON的数据
-                # 迭代结束  最后的 布尔代表是否结束
-                await stream_fun(res_list, think_string)
+                # 迭代结束 看看是否还有没发送的
+                if len(res_list) != 0:
+                    # 有没发送的 直接发送
+                    reply_content = ''.join(res_list).strip()
+                    if len(reply_content) != 0:
+                        await stream_fun(reply_content, think_string, count)
+                    elif count == 1:
+                        await stream_fun("模型似乎正在维护中呢，没有有效的回复~", think_string, count)
                 return None  # 流式处理不返回最终结果
             else:
                 json_text = await response.text()
