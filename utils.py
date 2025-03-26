@@ -67,6 +67,12 @@ class TimeBoundedList:
         res.append(f"共找到{count}个配置项目！")
         return ''.join(res)
 
+    def set_space_chat_fun(self, fun):
+        self.set_config("聊天模式", fun)
+
+    def get_space_chat_fun(self, def_value):
+        return self.get_config("聊天模式", def_value)
+
     def set_space_model_type(self, model_string, type_string):
         if model_string is None:
             model_string = '默认'
@@ -351,8 +357,9 @@ class CommandHandler:
             args = args[1:]
             args[0] = args[0].strip('\uE000 /')
         if args[0] not in self.command_fun:
-            return (f"没有找到可以调用的机器人指令：{args[0]}\n\n关于支持的指令和机器人详情，请查阅：https://www.lingyuzhao.top/b/Article"
-                    f"/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4")
+            return (
+                f"没有找到可以调用的机器人指令：{args[0]}\n\n关于支持的指令和机器人详情，请查阅：https://www.lingyuzhao.top/b/Article"
+                f"/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4")
         if self.is_async(args[0]):
             return await self.command_fun[args[0]](content[len(args[0]):], args[1:], message_id, user_openid, is_group)
         return self.command_fun[args[0]](content[len(args[0]):], args[1:], message_id, user_openid, is_group)

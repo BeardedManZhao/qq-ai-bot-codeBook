@@ -170,10 +170,22 @@ class MyClient(botpy.Client):
         logger.info(f"robot 「{self.robot.name}」 on_ready!")
         await http_client.init_session()
 
+    async def handler_message_fun(self, content, member_openid, user_openid, message_bot, is_group=False,
+                                  is_channel=False):
+        # 解析到 id 这个是可以直接用于获取消息列表的
+        real_id = CommandHandler.parse_message_id(member_openid, message_bot, is_group, is_channel)
+        # 获取到消息列表
+        fc, is_first = self.safe_history_get_or_create(real_id, is_group)
+        # 获取到处理函数并调用 默认是 stream 模式
+        await fc.get_space_chat_fun(self.handler_message_stream)(
+            real_id=real_id, hc=fc, is_first=is_first, content=content,
+            member_openid=member_openid, user_openid=user_openid,
+            message_bot=message_bot, is_group=is_group
+        )
+
     def __init__(self, intents1: Intents):
         super().__init__(intents1)
         self.history_chats = {}
-        self.handler_message_fun = self.handler_message_stream
 
         # 追加消息历史查询命令
         def command_history(string, list_args, message_list_id, user_openid, is_group):
@@ -226,11 +238,14 @@ class MyClient(botpy.Client):
         command_handler.push_command("设置类型", command_set_model_type, False)
 
         def command_set_stream_by_line(string, list_args, message_list_id, user_openid, is_group):
-            if self.handler_message_fun == self.handler_message:
-                self.handler_message_fun = self.handler_message_stream
+            hc = self.safe_history_get_or_create(message_list_id, is_group)[0]
+            # 首先判断当前是否是非流
+            if hc.get_space_chat_fun(self.handler_message_stream) == self.handler_message:
+                # 非流模式就启用流
+                hc.set_space_chat_fun(self.handler_message_stream)
                 return f"启用 stream 模式~"
             else:
-                self.handler_message_fun = self.handler_message
+                hc.set_space_chat_fun(self.handler_message)
                 return f"关闭 stream 模式~"
 
         command_handler.push_command("切换流模式", command_set_stream_by_line, False)
@@ -270,21 +285,21 @@ class MyClient(botpy.Client):
         )
         self.lock = asyncio.Lock()  # 添加异步锁防止历史记录冲突
 
-    async def handler_message(self, content, member_openid, user_openid, message_bot, is_group=False, is_channel=False):
+    @staticmethod
+    async def handler_message(real_id, hc, is_first, content, member_openid, user_openid, message_bot,
+                              is_group=False):
         """
         处理消息
+        :param real_id: 可以代表用户消息历史对象的 id
+        :param hc: 用户的消息历史对象
+        :param is_first: 是否是第一条消息
         :param content: 消息
         :param member_openid: 可以用来记录消息的 id
         :param user_openid: 可以用来代表用户个体的 id
         :param message_bot: 消息对象
         :param is_group: 是否是群组聊天
-        :param is_channel: 是否是频道聊天
         :return:
         """
-
-        # 解析到 id
-        real_id = CommandHandler.parse_message_id(member_openid, message_bot, is_group, is_channel)
-
         # 计算用户的标识
         user_mark = StrUtils.who_am_i(user_openid, is_group)
 
@@ -319,21 +334,15 @@ class MyClient(botpy.Client):
                     tools_res = ''
                     if lyMblApi is not None:
                         # 需要调用
-                        if real_id in self.history_chats:
-                            hc = self.history_chats[real_id]
-                            if hc.use_ly_mbl_api():
-                                tools_res = await http_client.fetch_tools_model(
-                                    user_openid, tools_url, [], hc, content, lyMblApi
-                                )
-                        else:
+                        if hc.use_ly_mbl_api():
                             tools_res = await http_client.fetch_tools_model(
-                                user_openid, tools_url, [], [], content, lyMblApi
+                                user_openid, tools_url, [], hc, content, lyMblApi
                             )
                     if len(tools_res) != 0:
                         # 函数调用结果
                         logger.info("触发了函数调用：" + tools_res)
                         if '失败' not in tools_res:
-                            hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                            MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                                 "role": "user",
                                 "content": f"# 系统消息(注意，这不是用户发送的，请不要对此内容做过多描述，尤其是数字类的参数，这可以避免错误描述)\n"
                                            f"> 当前系统时间：{date_str}\n"
@@ -345,7 +354,7 @@ class MyClient(botpy.Client):
                             })
                         else:
                             # 这是执行命令 但是执行错误了，所以抛出异常信息
-                            self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                            MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                                 "role": "assistant",
                                 "content": tools_res
                             })
@@ -353,7 +362,7 @@ class MyClient(botpy.Client):
                             return
                     else:
                         # 保存用户消息
-                        hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                        MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                             "role": "user",
                             "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）："
                                        f"【系统消息：当前系统时间：{date_str}】；\n"
@@ -372,13 +381,13 @@ class MyClient(botpy.Client):
                         images=images_base
                     )
                     # 保存消息
-                    hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                    MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                         "role": "user",
                         "content": f"* 系统消息(注意，这不是用户发送的)：当前系统时间：{date_str}\n\n----\n\n"
                                    f"# 用户发送的消息（用户名：{user_mark}）：\n\n----\n\n{content}"
                     })
                     # 保存图像消息
-                    self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                    MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                         "role": "user",
                         "content": f"# 系统消息(注意，这不是用户发送的)\n"
                                    f"> 当前系统时间：{date_str}\n"
@@ -413,7 +422,7 @@ class MyClient(botpy.Client):
                     reply_content = StrUtils.get_last_segment(temp['content'])
 
                 # 保存回复消息
-                self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                     "role": "assistant",
                     "content": reply_content
                 })
@@ -445,21 +454,21 @@ class MyClient(botpy.Client):
                 await message_bot.reply(content="\U0001F63F 服务器开小差了，请稍后再试～\n============\n"
                                                 "更多信息请查询：https://www.lingyuzhao.top/b/Article/-2321317989405261")
 
-    async def handler_message_stream(self, content, member_openid, user_openid, message_bot, is_group=False,
-                                     is_channel=False):
+    @staticmethod
+    async def handler_message_stream(real_id, hc, is_first, content, member_openid, user_openid, message_bot,
+                                     is_group=False):
         """
         处理消息
+        :param hc: 历史消息对象2
+        :param is_first: 是否是第一条消息
+        :param real_id: 用于获取消息对象的id
         :param content: 消息
         :param member_openid: 可以用来记录消息的 id
         :param user_openid: 可以用来代表用户个体的 id
         :param message_bot: 消息对象
         :param is_group: 是否是群组聊天
-        :param is_channel: 是否是频道聊天
         :return:
         """
-
-        # 解析到 id
-        real_id = CommandHandler.parse_message_id(member_openid, message_bot, is_group, is_channel)
 
         # 计算用户的标识
         user_mark = StrUtils.who_am_i(user_openid, is_group)
@@ -494,19 +503,15 @@ class MyClient(botpy.Client):
                     tools_res = ''
                     if lyMblApi is not None:
                         # 需要调用
-                        if real_id in self.history_chats:
+                        if hc.use_ly_mbl_api():
                             tools_res = await http_client.fetch_tools_model(
-                                user_openid, tools_url, [], self.history_chats[real_id], content, lyMblApi
-                            )
-                        else:
-                            tools_res = await http_client.fetch_tools_model(
-                                user_openid, tools_url, [], [], content, lyMblApi
+                                user_openid, tools_url, [], hc, content, lyMblApi
                             )
                     if len(tools_res) != 0:
                         # 函数调用结果
                         logger.info("触发了函数调用：" + tools_res)
                         if '失败' not in tools_res:
-                            hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                            MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                                 "role": "user",
                                 "content": f"# 系统消息(注意，这不是用户发送的，请不要对此内容做过多描述，尤其是数字类的参数，这可以避免错误描述)\n"
                                            f"> 当前系统时间：{date_str}\n"
@@ -518,7 +523,7 @@ class MyClient(botpy.Client):
                             })
                         else:
                             # 这是执行命令 但是执行错误了，所以抛出异常信息
-                            self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                            MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                                 "role": "assistant",
                                 "content": tools_res
                             })
@@ -526,7 +531,7 @@ class MyClient(botpy.Client):
                             return
                     else:
                         # 保存用户消息
-                        hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                        MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                             "role": "user",
                             "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）："
                                        f"【系统消息：当前系统时间：{date_str}】；\n"
@@ -545,13 +550,13 @@ class MyClient(botpy.Client):
                         images=images_base
                     )
                     # 保存消息
-                    hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                    MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                         "role": "user",
                         "content": f"* 系统消息(注意，这不是用户发送的)：当前系统时间：{date_str}\n\n----\n\n"
                                    f"# 用户发送的消息（用户名：{user_mark}）：\n\n----\n\n{content}"
                     })
                     # 保存图像消息
-                    self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                    MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                         "role": "user",
                         "content": f"# 系统消息(注意，这不是用户发送的)\n"
                                    f"> 当前系统时间：{date_str}"
@@ -591,7 +596,7 @@ class MyClient(botpy.Client):
                     #     )
 
                     # 开始存储数据，数据保存到历史记录
-                    self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                    MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                         "role": "assistant",
                         "content": reply_content
                     }, append=count == 1)
@@ -632,7 +637,7 @@ class MyClient(botpy.Client):
                 await message_bot.reply(content="\U0001F63F 服务器开小差了，请稍后再试～\n============\n"
                                                 "更多信息请查询：https://www.lingyuzhao.top/b/Article/-2321317989405261")
 
-    def safe_history_get_or_create(self, real_id, is_group):
+    def safe_history_get_or_create(self, real_id, is_group) -> (TimeBoundedList, bool):
         """
         存储一个用户/群的消息 并返回其对应的 TimeBoundedList 对象
         :param real_id:
@@ -668,11 +673,22 @@ class MyClient(botpy.Client):
         :return: 可以直接操作的 TimeBoundedList
         """
         res, is_first = self.safe_history_get_or_create(real_id, is_group)
-        if append:
-            res.append(message)
-        else:
-            res.set_last_value_append(message)
+        MyClient.safe_history_update_use_obj(res, is_first, message, append)
         return res, is_first
+
+    @staticmethod
+    def safe_history_update_use_obj(hc: TimeBoundedList, is_first, message, append=True):
+        """
+        存储一个用户/群的消息 并返回其对应的 TimeBoundedList 对象
+        :param is_first: 是否是第一次处理用户的消息
+        :param hc: 用户的历史消息对象
+        :param append: 是否要在消息列表里追加 如果选择False 就是要在最新的消息字符串上追加 而不是列表
+        :param message:
+        """
+        if append:
+            hc.append(message)
+        else:
+            hc.set_last_value_append(message)
 
     async def on_group_at_message_create(self, message):
         """
