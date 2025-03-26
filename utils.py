@@ -26,8 +26,10 @@ class TimeBoundedList:
         self.ttl = ttl
         self.container = deque(maxlen=max_size)  # 使用双端队列存储(插入时间, 数据)的元组
         self.config = {}  # 用于存储此空间的一些临时配置
+        # 设置默认值
+        self.set_space_use_ly_mbl_api(self.use_ly_mbl_api())
 
-    def set_config(self, config_name: str, config_value: str):
+    def set_config(self, config_name: str, config_value):
         """
         设置一个配置参数到这里 可能会在各种地方使用
         :param config_name: 配置名字
@@ -36,7 +38,7 @@ class TimeBoundedList:
         """
         self.config[config_name] = config_value
 
-    def get_config(self, config_name: str, def_value: str):
+    def get_config(self, config_name: str, def_value):
         """
         获取到一个配置项目 获取不到就使用默认值
         :param config_name: 需要使用的配置的名字
@@ -48,6 +50,31 @@ class TimeBoundedList:
         else:
             return def_value
 
+    def get_configs_string(self):
+        """
+        将所有的配置信息查询出来
+        :return: 结果
+        """
+        res = []
+        count = 0
+        for c in self.config:
+            if 'url' not in c:
+                res.append('【')
+                res.append(c)
+                res.append(f'】{self.config[c]}')
+                res.append('\n\n')
+                count += 1
+        res.append(f"共找到{count}个配置项目！")
+        return ''.join(res)
+
+    def set_space_model_type(self, model_string, type_string):
+        if model_string is None:
+            model_string = '默认'
+        if type_string is None:
+            type_string = '默认'
+        self.set_config("模型型号", model_string)
+        self.set_config("数据风格", type_string)
+
     def set_space_model_url(self, model_url: str, model_group_url: str):
         self.set_config("model_url", model_url)
         self.set_config("model_group_url", model_group_url)
@@ -57,6 +84,12 @@ class TimeBoundedList:
 
     def get_space_model_group_url(self, def_value):
         return self.get_config("model_group_url", def_value)
+
+    def set_space_use_ly_mbl_api(self, value):
+        return self.set_config("模型指令", value)
+
+    def use_ly_mbl_api(self):
+        return self.get_config("模型指令", False)
 
     def append(self, item):
         """
@@ -172,7 +205,7 @@ class HttpClient:
                             if decoded_line:  # 确保非空
                                 res = json.loads(line.decode('utf-8'))['message']  # 解码并打印每一条消息
                                 if type(res) is str:
-                                    await stream_fun(res, [])
+                                    await stream_fun(res, [], count)
                                 else:
                                     res_string = res['content']
                                     if think_end in res_string:
@@ -317,6 +350,9 @@ class CommandHandler:
             # 代表命令有问题 偏移一下参数位
             args = args[1:]
             args[0] = args[0].strip('\uE000 /')
+        if args[0] not in self.command_fun:
+            return (f"没有找到可以调用的机器人指令：{args[0]}\n\n关于支持的指令和机器人详情，请查阅：https://www.lingyuzhao.top/b/Article"
+                    f"/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4")
         if self.is_async(args[0]):
             return await self.command_fun[args[0]](content[len(args[0]):], args[1:], message_id, user_openid, is_group)
         return self.command_fun[args[0]](content[len(args[0]):], args[1:], message_id, user_openid, is_group)

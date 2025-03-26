@@ -161,7 +161,7 @@ command_handler = CommandHandler({
     "now": command_get_current_time_formatted,
     "testArgs": command_args_string,
     "翻译": command_translate_string,
-    "我是谁": command_who_am_i
+    "我是谁": command_who_am_i,
 }, {"翻译"})
 
 
@@ -178,7 +178,7 @@ class MyClient(botpy.Client):
         # 追加消息历史查询命令
         def command_history(string, list_args, message_list_id, user_openid, is_group):
             res = []
-            for line in self.history_chats[message_list_id].get_items():
+            for line in self.safe_history_get_or_create(message_list_id, is_group)[0].get_items():
                 if line['role'] == 'user':
                     res.append("*用户*\n")
                 else:
@@ -186,6 +186,7 @@ class MyClient(botpy.Client):
                 res.append(line['content'])
                 res.append('\n\n###########\n\n')
             return ''.join(res)
+
         command_handler.push_command("历史消息", command_history, False)
 
         # 追加 clean 命令
@@ -206,16 +207,19 @@ class MyClient(botpy.Client):
             :return:
             """
             command_clean(string, list_args, message_list_id, user_openid, is_group)
+            hc = self.safe_history_get_or_create(message_list_id, is_group)[0]
             if len(list_args) <= 1:
-                self.history_chats[message_list_id].set_space_model_url(
+                hc.set_space_model_url(
                     create_url(list_args[0]), create_group_model_url(list_args[0] + '_group')
                 )
+                hc.set_space_model_type(None, list_args[0])
                 return f"已将您所属空间的类型设置为【{list_args[0]}】\n\n此操作可能会更改一些行为，但区别不大，若需要还原请使用命令【/清理】"
             else:
-                self.history_chats[message_list_id].set_space_model_url(
+                hc.set_space_model_url(
                     create_url(list_args[0], list_args[1]),
                     create_group_model_url(list_args[0] + '_group', list_args[1])
                 )
+                hc.set_space_model_type(list_args[1], list_args[0])
                 return (f"已将您所属空间的类型设置为【{list_args[0]}】\n\n已将您所属空间的模式设置为【{list_args[1]}】"
                         f"\n\n此操作可能会更改一些大量行为，若需要还原请使用命令【/清理】")
 
@@ -230,6 +234,32 @@ class MyClient(botpy.Client):
                 return f"关闭 stream 模式~"
 
         command_handler.push_command("切换流模式", command_set_stream_by_line, False)
+
+        def command_set_use_ly_mbl_api(string, list_args, message_list_id, user_openid, is_group):
+            hc = self.safe_history_get_or_create(message_list_id, is_group)[0]
+            r = not hc.use_ly_mbl_api()
+            hc.set_space_use_ly_mbl_api(r)
+            if r:
+                return "现在已经 启用了 模型指令，此模式下，机器人会具有更多功能"
+            else:
+                return "现在已经 关闭了 模型指令，此模式下，机器人会具有更快更好的回答方式"
+
+        command_handler.push_command("切换指令开关", command_set_use_ly_mbl_api, False)
+
+        def command_show_config(string, list_args, message_list_id, user_openid, is_group):
+            """
+            查自己的用户名
+            :param user_openid: 可以代表用户个体的 id
+            :param string:
+            :param list_args:
+            :param message_list_id: 需要被转换的 id
+            :param is_group: 当前是否处于群，只有群的状态才会缩减自己的用户名
+            :return:
+            """
+            hc = self.safe_history_get_or_create(message_list_id, is_group)[0]
+            return hc.get_configs_string()
+
+        command_handler.push_command("配置查询", command_show_config, False)
 
         # 日志处理
         logger.info(
@@ -290,9 +320,11 @@ class MyClient(botpy.Client):
                     if lyMblApi is not None:
                         # 需要调用
                         if real_id in self.history_chats:
-                            tools_res = await http_client.fetch_tools_model(
-                                user_openid, tools_url, [], self.history_chats[real_id], content, lyMblApi
-                            )
+                            hc = self.history_chats[real_id]
+                            if hc.use_ly_mbl_api():
+                                tools_res = await http_client.fetch_tools_model(
+                                    user_openid, tools_url, [], hc, content, lyMblApi
+                                )
                         else:
                             tools_res = await http_client.fetch_tools_model(
                                 user_openid, tools_url, [], [], content, lyMblApi
@@ -458,16 +490,53 @@ class MyClient(botpy.Client):
             else:
                 # 看看是否有图数据
                 if length_is0:
-                    # 保存用户消息
-                    hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
-                        "role": "user",
-                        "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）：【系统消息：当前系统时间：{date_str}】；\n\n----\n\n{content}",
-                        "options": {
-                            "temperature": 0.6,
-                            "top_p": 0.85,
-                            "repeat_penalty": 1.3
-                        }
-                    })
+                    # 查询是否需要调用 tool
+                    tools_res = ''
+                    if lyMblApi is not None:
+                        # 需要调用
+                        if real_id in self.history_chats:
+                            tools_res = await http_client.fetch_tools_model(
+                                user_openid, tools_url, [], self.history_chats[real_id], content, lyMblApi
+                            )
+                        else:
+                            tools_res = await http_client.fetch_tools_model(
+                                user_openid, tools_url, [], [], content, lyMblApi
+                            )
+                    if len(tools_res) != 0:
+                        # 函数调用结果
+                        logger.info("触发了函数调用：" + tools_res)
+                        if '失败' not in tools_res:
+                            hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                                "role": "user",
+                                "content": f"# 系统消息(注意，这不是用户发送的，请不要对此内容做过多描述，尤其是数字类的参数，这可以避免错误描述)\n"
+                                           f"> 当前系统时间：{date_str}\n"
+                                           f"> 请尽可能详细的将此结果回复给用户\n"
+                                           f"\n\n----\n\n"
+                                           f"## 关于用户触发函数调用的调用结果\n"
+                                           f"{tools_res}\n\n"
+                                           f"# 用户消息(这个是用户发送的消息哦，请结合此信息来将上面的结果回复给用户)\n{content}"
+                            })
+                        else:
+                            # 这是执行命令 但是执行错误了，所以抛出异常信息
+                            self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                                "role": "assistant",
+                                "content": tools_res
+                            })
+                            await message_bot.reply(content=tools_res)
+                            return
+                    else:
+                        # 保存用户消息
+                        hc, is_first = self.safe_history_update(real_id=real_id, is_group=is_group, message={
+                            "role": "user",
+                            "content": f"用户[{user_mark}]的消息（用户名：{user_mark}）："
+                                       f"【系统消息：当前系统时间：{date_str}】；\n"
+                                       f"\n----\n\n{content}",
+                            "options": {
+                                "temperature": 0.6,
+                                "top_p": 0.85,
+                                "repeat_penalty": 1.3
+                            }
+                        })
                 else:
                     # 图片解析
                     resp = await http_client.fetch_model_images(
@@ -563,13 +632,11 @@ class MyClient(botpy.Client):
                 await message_bot.reply(content="\U0001F63F 服务器开小差了，请稍后再试～\n============\n"
                                                 "更多信息请查询：https://www.lingyuzhao.top/b/Article/-2321317989405261")
 
-    def safe_history_update(self, real_id, is_group, message, append=True) -> tuple[Any, bool]:
+    def safe_history_get_or_create(self, real_id, is_group):
         """
         存储一个用户/群的消息 并返回其对应的 TimeBoundedList 对象
-        :param append: 是否要在消息列表里追加 如果选择False 就是要在最新的消息字符串上追加 而不是列表
         :param real_id:
         :param is_group: 是否是群
-        :param message:
         :return: 可以直接操作的 TimeBoundedList
         """
         is_first = False
@@ -589,6 +656,18 @@ class MyClient(botpy.Client):
                 )
                 is_first = True
             res = self.history_chats[real_id]
+        return res, is_first
+
+    def safe_history_update(self, real_id, is_group, message, append=True) -> tuple[Any, bool]:
+        """
+        存储一个用户/群的消息 并返回其对应的 TimeBoundedList 对象
+        :param append: 是否要在消息列表里追加 如果选择False 就是要在最新的消息字符串上追加 而不是列表
+        :param real_id:
+        :param is_group: 是否是群
+        :param message:
+        :return: 可以直接操作的 TimeBoundedList
+        """
+        res, is_first = self.safe_history_get_or_create(real_id, is_group)
         if append:
             res.append(message)
         else:
