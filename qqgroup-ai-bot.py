@@ -47,6 +47,9 @@ file_handler.setLevel(logging.DEBUG)
 server_id = test_config['model_server_id']
 server_sk = test_config['model_server_sk']
 
+def_type_string = test_config['model_server_type']
+def_model_string = test_config['model_server_model']
+
 # 设置用户数据存储位置
 if 'user_data_path' in test_config:
     user_data_path = test_config['user_data_path']
@@ -70,12 +73,12 @@ def create_prompt_url(model_type='none', model=test_config['model_server_model_i
             f"&model={model}")
 
 
-def create_group_model_url(model_type=test_config['model_server_type_group'], model=test_config['model_server_model']):
+def create_group_model_url(model_type=def_type_string, model=def_model_string):
     return create_url(model_type, model)
 
 
 def create_group_model_prompt_url(model_type='none',
-                                  model=test_config['model_server_model_image']):
+                                  model=def_model_string):
     return create_prompt_url(model_type, model)
 
 
@@ -116,10 +119,9 @@ def clean(history_chats, message_id, is_group):
     :param message_id: 消息记录对应的 id
     :return: 处理成功的消息
     """
-    history_chats[message_id] = TimeBoundedList(
-        ttl=test_config['userMessageMaxTtl'], max_size=test_config['groupMessageMaxLen'],
-        is_group=is_group
-    )
+    if message_id not in history_chats:
+        return f"空间：【{StrUtils.desensitization(message_id)}】不需要清理！"
+    history_chats[message_id].clear_message()
     return f"清理空间：【{StrUtils.desensitization(message_id)}】的数据成功！"
 
 
@@ -177,6 +179,7 @@ command_handler = CommandHandler({
 class MyClient(botpy.Client):
     async def on_ready(self):
         logger.info(f"robot 「{self.robot.name}」 on_ready!")
+        logger.info(f"默认的模型：{def_model_string}.{def_type_string}")
         await http_client.init_session()
 
     async def handler_message_fun(self, content, member_openid, user_openid, message_bot, is_group=False,
@@ -206,6 +209,8 @@ class MyClient(botpy.Client):
                     res.append("*neko*\n")
                 res.append(line['content'])
                 res.append('\n\n###########\n\n')
+            if len(res) == 0:
+                return "-==《暂无消息》==-"
             return ''.join(res)
 
         command_handler.push_command("历史消息", command_history, False)
@@ -231,18 +236,43 @@ class MyClient(botpy.Client):
             hc = self.safe_history_get_or_create(message_list_id, is_group)[0]
             if len(list_args) == 0:
                 list_args = [
-                    hc.get_space_type(def_type_string=test_config['model_server_type']),
-                    hc.get_space_model(def_model_string=test_config['model_server_model'])
+                    hc.get_space_type(def_type_string=def_type_string),
+                    hc.get_space_model(def_model_string=def_model_string)
                 ]
+
             if len(list_args) == 1:
-                # 由于没有设置模型 只是改类型 因此我们获取一下原本的模型
-                old_model = hc.get_space_model(def_model_string=test_config['model_server_model'])
-                hc.set_space_model_url(
-                    create_url(list_args[0], old_model),
-                    create_group_model_url(list_args[0] + '_group', old_model)
-                )
-                hc.set_space_model_type(old_model, list_args[0])
-                return f"已将您所属空间的类型设置为【{list_args[0]}】\n\n此操作可能会更改一些行为，但区别不大，若需要还原请使用命令【/清理】"
+                # 判断是set模型还是set类型
+                list_args0 = list_args[0]
+                if 'model' in list_args0:
+                    # 由于没有设置类型 只是改模型 因此我们获取一下原本的类型
+                    old_type = hc.get_space_type(def_type_string=def_type_string)
+                    hc.set_space_model_url(
+                        create_url(old_type, list_args0),
+                        create_group_model_url(old_type, list_args0)
+                    )
+                    hc.set_space_model_type(list_args0, old_type)
+                    return (f"您的所属空间类型没有变更\n\n已将您所属空间的模式设置为【{list_args0}】"
+                            f"\n\n此操作会更改一些行为，可能会有一些区别，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
+                            f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87"
+                            f"%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
+                            f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
+                            f"/设置类型 {def_type_string} {def_model_string}"
+                            )
+                else:
+                    # 由于没有设置模型 只是改类型 因此我们获取一下原本的模型
+                    old_model = hc.get_space_model(def_model_string=def_model_string)
+                    hc.set_space_model_url(
+                        create_url(list_args0, old_model),
+                        create_group_model_url(list_args0 + '_group', old_model)
+                    )
+                    hc.set_space_model_type(old_model, list_args0)
+                    return (f"已将您所属空间的类型设置为【{list_args0}】\n\n您的所属空间模式没有变更"
+                            f"\n\n此操作会更改一些行为，但区别不大，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
+                            f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87"
+                            f"%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
+                            f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
+                            f"/设置类型 {def_type_string} {def_model_string}"
+                            )
             else:
                 hc.set_space_model_url(
                     create_url(list_args[0], list_args[1]),
@@ -250,7 +280,12 @@ class MyClient(botpy.Client):
                 )
                 hc.set_space_model_type(list_args[1], list_args[0])
                 return (f"已将您所属空间的类型设置为【{list_args[0]}】\n\n已将您所属空间的模式设置为【{list_args[1]}】"
-                        f"\n\n此操作可能会更改一些大量行为，若需要还原请使用命令【/清理】")
+                        f"\n\n此操作可能会更改一些大量行为，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
+                        f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87"
+                        f"%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
+                        f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
+                        f"/设置类型 {def_type_string} {def_model_string}"
+                        )
 
         command_handler.push_command("设置类型", command_set_model_type, False)
 
@@ -465,7 +500,7 @@ class MyClient(botpy.Client):
             await message_bot.reply(
                 content=f"模型已成功生成回答，但被qq拦截了，下面是qq返回的错误信息！\n====\n{error_string}")
             await message_bot.reply(
-                content=f"不用担心，您可以尝试换一种问法哦~\n\n====\n\n更多详情：https://www.lingyuzhao.top/b/Article/-2321317989405261",
+                content=f"不用担心，您可以尝试换一种问法\n\n====\n\n更多异常汇总：https://www.lingyuzhao.top/b/Article/-2321317989405261",
                 msg_seq='2'
             )
         except Exception as e:
@@ -651,6 +686,15 @@ class MyClient(botpy.Client):
                         stream=True,
                         stream_fun=handler_data
                     )
+        except ServerError as se:
+            error_string = str(se).replace('.', '_')
+            logger.error(f"腾讯拦截了消息，没有成功回答：{content}，因为：{error_string}")
+            await message_bot.reply(
+                content=f"模型已成功生成回答，但被qq拦截了，下面是qq返回的错误信息！\n====\n{error_string}")
+            await message_bot.reply(
+                content=f"不用担心，您可以尝试换一种问法\n\n====\n\n更多异常汇总：https://www.lingyuzhao.top/b/Article/-2321317989405261",
+                msg_seq='2'
+            )
         except Exception as e:
             logger.error(f"处理消息时出错：{str(e)}：{traceback.format_exc()}")
             if need_hidden_module:
@@ -820,7 +864,7 @@ class MyClient(botpy.Client):
             return
         res = {}
         for chat_id, chat_obj in self.history_chats.items():
-            res[chat_id] = chat_obj.get_configs()  # 获取每个聊天对象的配置
+            res[chat_id] = chat_obj.get_configs_to_json()  # 获取每个聊天对象的配置
 
         # 将数据保存到文件
         try:
@@ -838,6 +882,7 @@ if __name__ == "__main__":
     intents = botpy.Intents(public_messages=True, public_guild_messages=True, direct_message=True)
     client = MyClient(intents1=intents)
     client.load_config_all_user()
+
 
     def cleanup(signum, frame):
         """
@@ -858,4 +903,3 @@ if __name__ == "__main__":
 
     # 开始启动
     client.run(appid=test_config["appid"], secret=test_config["secret"])
-

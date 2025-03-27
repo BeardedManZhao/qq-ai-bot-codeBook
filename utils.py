@@ -57,6 +57,13 @@ class TimeBoundedList:
     def get_configs(self):
         return self.config
 
+    def get_configs_to_json(self):
+        r_json = {}
+        for e in self.get_configs():
+            if e != '聊天模式':
+                r_json[e] = self.config[e]
+        return r_json
+
     def get_configs_string(self):
         """
         将所有的配置信息查询出来
@@ -87,7 +94,7 @@ class TimeBoundedList:
             self.set_config("数据风格", type_string)
 
     def get_space_type(self, def_type_string):
-        return self.set_config("数据风格", def_type_string)
+        return self.get_config("数据风格", def_type_string)
 
     def get_space_model(self, def_model_string):
         return self.get_config("模型型号", def_model_string)
@@ -109,6 +116,9 @@ class TimeBoundedList:
 
     def use_ly_mbl_api(self):
         return self.get_config("模型指令", False)
+
+    def clear_message(self):
+        self.container.clear()
 
     def append(self, item):
         """
@@ -373,9 +383,11 @@ class CommandHandler:
             return (
                 f"没有找到可以调用的机器人指令：{args[0]}\n\n关于支持的指令和机器人详情，请查阅：https://www.lingyuzhao.top/b/Article"
                 f"/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4")
+
+        length = len(args[0])
         if self.is_async(args[0]):
-            return await self.command_fun[args[0]](content[len(args[0]):], args[1:], message_id, user_openid, is_group)
-        return self.command_fun[args[0]](content[len(args[0]):], args[1:], message_id, user_openid, is_group)
+            return await self.command_fun[args[0]](content[length + 1:], args[1:], message_id, user_openid, is_group)
+        return self.command_fun[args[0]](content[length + 1:], args[1:], message_id, user_openid, is_group)
 
     def is_async(self, command: str):
         """
