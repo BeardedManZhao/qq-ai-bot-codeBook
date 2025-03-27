@@ -85,8 +85,7 @@ def create_group_model_prompt_url(model_type='none',
 url = create_url()
 group_model_url = create_group_model_url()
 
-prompt_url = create_prompt_url(model_type='image_parse')
-prompt_group_model_url = create_group_model_prompt_url(model_type='image_parse')
+image_url = create_url(model_type='image_parse', model=test_config['model_server_model_image'])
 
 tools_url = create_url(model_type='none', model='model02')
 
@@ -201,17 +200,19 @@ class MyClient(botpy.Client):
 
         # 追加消息历史查询命令
         def command_history(string, list_args, message_list_id, user_openid, is_group):
-            res = []
-            for line in self.safe_history_get_or_create(message_list_id, is_group)[0].get_items():
-                if line['role'] == 'user':
-                    res.append("*用户*\n")
-                else:
-                    res.append("*neko*\n")
-                res.append(line['content'])
-                res.append('\n\n###########\n\n')
-            if len(res) == 0:
-                return "-==《暂无消息》==-"
-            return ''.join(res)
+            if len(list_args) >= 1 and list_args[0] == 'debug':
+                res = []
+                for line in self.safe_history_get_or_create(message_list_id, is_group)[0].get_items():
+                    if line['role'] == 'user':
+                        res.append("*用户*\n")
+                    else:
+                        res.append("*neko*\n")
+                    res.append(line['content'])
+                    res.append('\n\n###########\n\n')
+                if len(res) == 0:
+                    return "-==《暂无消息》==-"
+                return ''.join(res)
+            return "-==《暂不支持》==-\n\n因为有小伙伴觉得此举侵犯隐私~ 很抱歉"
 
         command_handler.push_command("历史消息", command_history, False)
 
@@ -338,6 +339,27 @@ class MyClient(botpy.Client):
         self.lock = asyncio.Lock()  # 添加异步锁防止历史记录冲突
 
     @staticmethod
+    async def handler_qq_error(message_bot, content, error, count: int):
+        """
+        处理 qq 服务器返回的错误
+        :param message_bot: 消息对象
+        :param content: 输入的字符串
+        :param error: 错误对象
+        :param count: 当前回复数据的编号
+        """
+        error_string = str(error).replace('.', '_')
+        logger.error(f"腾讯拦截了消息，没有成功回答：{content}，因为：{error_string}")
+        await message_bot.reply(
+            content=f"模型已成功生成回答，但被qq拦截了，下面是qq返回的错误信息！\n====\n{error_string}",
+            msg_seq=str(count)
+        )
+        if count < 5:
+            await message_bot.reply(
+                content=f"不用担心，您可以尝试换一种问法\n\n====\n\n更多异常汇总：https://www.lingyuzhao.top/b/Article/-2321317989405261",
+                msg_seq=str(count + 1)
+            )
+
+    @staticmethod
     async def handler_message(real_id, hc, is_first, content, member_openid, user_openid, message_bot,
                               is_group=False):
         """
@@ -428,24 +450,26 @@ class MyClient(botpy.Client):
                 else:
                     # 图片解析
                     resp = await http_client.fetch_model_images(
-                        model_prompt_url=prompt_url,
+                        image_url=image_url,
                         headers=[],
-                        images=images_base
+                        images=images_base,
+                        content=content
                     )
+                    res_message = resp['message']
+                    # 保存图像消息
+                    MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
+                        "role": "user",
+                        "content": f"# 系统消息(注意，这不是用户发送的)\n"
+                                   f"> 当前系统时间：{date_str}"
+                                   f"\n\n----\n\n"
+                                   f"## 关于图片的解析结果：\n{res_message['content']}\n\n"
+                                   f"# 用户发送的消息（用户名：{user_mark}）这个才是用户发送的：\n\n----\n\n{content}"
+                    })
                     # 保存消息
                     MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                         "role": "user",
                         "content": f"* 系统消息(注意，这不是用户发送的)：当前系统时间：{date_str}\n\n----\n\n"
                                    f"# 用户发送的消息（用户名：{user_mark}）：\n\n----\n\n{content}"
-                    })
-                    # 保存图像消息
-                    MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
-                        "role": "user",
-                        "content": f"# 系统消息(注意，这不是用户发送的)\n"
-                                   f"> 当前系统时间：{date_str}\n"
-                                   f"\n\n----\n\n"
-                                   f"## 关于图片的解析结果：\n{resp['response']}\n\n"
-                                   f"# 用户消息(这个是用户发送的消息哦)\n{content}"
                     })
 
                 # 异步获取模型 API响应
@@ -495,14 +519,7 @@ class MyClient(botpy.Client):
                     f"【ok】时间：{date_str}; realId:{real_id}; 玩家:{user_mark}; 消息:{content}; 回复:{reply_content}")
 
         except ServerError as se:
-            error_string = str(se).replace('.', '_')
-            logger.error(f"腾讯拦截了消息，没有成功回答：{content}，因为：{error_string}")
-            await message_bot.reply(
-                content=f"模型已成功生成回答，但被qq拦截了，下面是qq返回的错误信息！\n====\n{error_string}")
-            await message_bot.reply(
-                content=f"不用担心，您可以尝试换一种问法\n\n====\n\n更多异常汇总：https://www.lingyuzhao.top/b/Article/-2321317989405261",
-                msg_seq='2'
-            )
+            await MyClient.handler_qq_error(message_bot, content, se, 1)
         except Exception as e:
             logger.error(f"处理消息时出错：{str(e)}：{traceback.format_exc()}")
             if need_hidden_module:
@@ -606,24 +623,19 @@ class MyClient(botpy.Client):
                 else:
                     # 图片解析
                     resp = await http_client.fetch_model_images(
-                        model_prompt_url=prompt_url,
+                        image_url=image_url,
                         headers=[],
                         images=images_base
                     )
-                    # 保存消息
-                    MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
-                        "role": "user",
-                        "content": f"* 系统消息(注意，这不是用户发送的)：当前系统时间：{date_str}\n\n----\n\n"
-                                   f"# 用户发送的消息（用户名：{user_mark}）：\n\n----\n\n{content}"
-                    })
+                    res_message = resp['message']
                     # 保存图像消息
                     MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                         "role": "user",
                         "content": f"# 系统消息(注意，这不是用户发送的)\n"
                                    f"> 当前系统时间：{date_str}"
                                    f"\n\n----\n\n"
-                                   f"## 关于图片的解析结果：\n{resp['response']}\n\n"
-                                   f"# 用户消息(这个是用户发送的消息哦)\n{content}"
+                                   f"## 关于图片的解析结果：\n{res_message['content']}\n\n"
+                                   f"# 用户发送的消息（用户名：{user_mark}）这个才是用户发送的：\n\n----\n\n{content}"
                     })
 
                 # 准备一个函数 用来处理流数据
@@ -634,28 +646,6 @@ class MyClient(botpy.Client):
                     :param reply_content: 回复数据 的字符串
                     :param think_string: 思考数据 list 其中每个词占一个元素
                     """
-                    # # 通过api发送回复消息
-                    # if is_channel:
-                    #     await self.api.post_message(
-                    #         channel_id=real_id,
-                    #         msg_id=message_bot.id,
-                    #         content=reply_content,
-                    #     )
-                    # elif is_group:
-                    #     await self.api.post_group_message(
-                    #         group_openid=real_id,
-                    #         msg_id=message_bot.id,
-                    #         content=reply_content,
-                    #         msg_seq=count
-                    #     )
-                    # else:
-                    #     await self.api.post_c2c_message(
-                    #         openid=real_id,
-                    #         msg_id=message_bot.id,
-                    #         content=reply_content,
-                    #         msg_seq=str(count)
-                    #     )
-
                     # 开始存储数据，数据保存到历史记录
                     MyClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                         "role": "assistant",
@@ -669,6 +659,10 @@ class MyClient(botpy.Client):
                         logger.info(
                             f"玩家:{user_mark}; 回复:{reply_content}")
 
+                # 准备一个函数 用来处理qq异常
+                async def handler_qq_error(error, count):
+                    await MyClient.handler_qq_error(message_bot, content, error, count)
+
                 # 异步获取模型 API响应
                 if is_group:
                     await http_client.fetch_model(
@@ -676,7 +670,8 @@ class MyClient(botpy.Client):
                         headers=[],
                         history_chat=hc,
                         stream=True,
-                        stream_fun=handler_data
+                        stream_fun=handler_data,
+                        qq_error_fun=handler_qq_error
                     )
                 else:
                     await http_client.fetch_model(
@@ -684,17 +679,9 @@ class MyClient(botpy.Client):
                         headers=[],
                         history_chat=hc,
                         stream=True,
-                        stream_fun=handler_data
+                        stream_fun=handler_data,
+                        qq_error_fun=handler_qq_error
                     )
-        except ServerError as se:
-            error_string = str(se).replace('.', '_')
-            logger.error(f"腾讯拦截了消息，没有成功回答：{content}，因为：{error_string}")
-            await message_bot.reply(
-                content=f"模型已成功生成回答，但被qq拦截了，下面是qq返回的错误信息！\n====\n{error_string}")
-            await message_bot.reply(
-                content=f"不用担心，您可以尝试换一种问法\n\n====\n\n更多异常汇总：https://www.lingyuzhao.top/b/Article/-2321317989405261",
-                msg_seq='2'
-            )
         except Exception as e:
             logger.error(f"处理消息时出错：{str(e)}：{traceback.format_exc()}")
             if need_hidden_module:

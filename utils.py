@@ -7,6 +7,7 @@ from collections import deque, defaultdict
 from datetime import datetime
 
 import aiohttp
+from botpy.errors import ServerError
 
 from tools import create_tools
 
@@ -203,9 +204,10 @@ class HttpClient:
             return ly_mbl_jvm.json_cell(user_open_id, json.loads(await response.text()))
 
     async def fetch_model(self, model_url: str, headers, history_chat: TimeBoundedList, stream: bool = False,
-                          stream_fun=None, think_mark='think'):
+                          stream_fun=None, qq_error_fun=None, think_mark='think'):
         """
         向模型发起对话请求
+        :param qq_error_fun: 当 qq服务器返回异常的时候 要调用的函数，要求输入为（异常对象，count值:int） 不可以为空
         :param think_mark: 思考标记 在标记中的数据将不会被发送
         :param stream_fun: 如果是使用的流，则数据会直接传递到此函数中
         :param stream: 是否要使用流式数据
@@ -224,68 +226,76 @@ class HttpClient:
             think_string = []
             res_list = []
             count = 1
-            if stream:
-                # 如果是流式处理，逐行读取并解析响应
-                in_think = False
-                async for line in response.content:
-                    if line:
-                        try:
-                            decoded_line = line.decode('utf-8')
-                            if decoded_line:  # 确保非空
-                                res = json.loads(line.decode('utf-8'))['message']  # 解码并打印每一条消息
-                                if type(res) is str:
-                                    await stream_fun(res, [], count)
-                                else:
-                                    res_string = res['content']
-                                    if think_end in res_string:
-                                        in_think = False
-                                    elif think_start in res_string:
-                                        in_think = True
+            try:
+                if stream:
+                    # 如果是流式处理，逐行读取并解析响应
+                    in_think = False
+                    async for line in response.content:
+                        if line:
+                            try:
+                                decoded_line = line.decode('utf-8')
+                                if decoded_line:  # 确保非空
+                                    res = json.loads(line.decode('utf-8'))['message']  # 解码并打印每一条消息
+                                    if type(res) is str:
+                                        await stream_fun(res, [], count)
+                                    else:
+                                        res_string = res['content']
+                                        if think_end in res_string:
+                                            in_think = False
+                                        elif think_start in res_string:
+                                            in_think = True
 
-                                    # 不是在 think 且 token 有数据
-                                    elif not in_think and len(res_string) != 0:
-                                        res_list.append(res_string)
-                                        if count <= 4 and '\n' in res_string:
-                                            # 代表是换段 同时消息数量小于4 可以继续发送
-                                            reply_content = ''.join(res_list).strip()
-                                            if len(reply_content) != 0:
-                                                await stream_fun(reply_content, think_string, count)
-                                                res_list = []
-                                                count += 1
-                        except json.JSONDecodeError:
-                            continue  # 忽略无法解析为JSON的数据
-                # 迭代结束 看看是否还有没发送的
-                if len(res_list) != 0:
-                    # 有没发送的 直接发送
-                    reply_content = ''.join(res_list).strip()
-                    if len(reply_content) != 0:
-                        await stream_fun(reply_content, think_string, count)
-                    elif count == 1:
-                        await stream_fun("模型似乎正在维护中呢，没有有效的回复~", think_string, count)
-                return None  # 流式处理不返回最终结果
-            else:
-                json_text = await response.text()
-                try:
-                    # 如果不是流式处理，直接返回json解析结果
-                    return json.loads(json_text)
-                except json.decoder.JSONDecodeError:
-                    raise ValueError("模型的回复json解析操作出现问题了！【" + json_text + '】')
+                                        # 不是在 think 且 token 有数据
+                                        elif not in_think and len(res_string) != 0:
+                                            res_list.append(res_string)
+                                            if count <= 4 and '\n' in res_string:
+                                                # 代表是换段 同时消息数量小于4 可以继续发送
+                                                reply_content = ''.join(res_list).strip()
+                                                if len(reply_content) != 0:
+                                                    await stream_fun(reply_content, think_string, count)
+                                                    res_list = []
+                                                    count += 1
+                            except json.JSONDecodeError:
+                                continue  # 忽略无法解析为JSON的数据
+                    # 迭代结束 看看是否还有没发送的
+                    if len(res_list) != 0:
+                        # 有没发送的 直接发送
+                        reply_content = ''.join(res_list).strip()
+                        if len(reply_content) != 0:
+                            await stream_fun(reply_content, think_string, count)
+                        elif count == 1:
+                            await stream_fun("模型似乎正在维护中呢，没有有效的回复~", think_string, count)
+                    return None  # 流式处理不返回最终结果
+                else:
+                    json_text = await response.text()
+                    try:
+                        # 如果不是流式处理，直接返回json解析结果
+                        return json.loads(json_text)
+                    except json.decoder.JSONDecodeError:
+                        raise ValueError("模型的回复json解析操作出现问题了！【" + json_text + '】')
+            except ServerError as se:
+                await qq_error_fun(se, count)
 
-    async def fetch_model_images(self, model_prompt_url: str, headers, images: list):
+    async def fetch_model_images(self, image_url: str, headers, images: list,
+                                 content='请用最详细的语言来描述图！'):
         """
+        :param content: 识别图的时候要传给模型的数据
         :param headers: 头数据
         :param images: 需要被模型看的图片
-        :param model_prompt_url: 一次性请求使用的 url 用于多模态
+        :param image_url: 一次性请求使用的 url 用于多模态
         :return:
         """
         data = {
-            # 提取出最新发送的消息
-            "prompt": '请用最详细的语言来描述图！',
-            "stream": False,
-            # 提取出所有图片
-            "images": images
+            "messages": [
+                {
+                    "role": "user",
+                    "content": content,
+                    # 提取出所有图片
+                    "images": images}
+            ],
+            "stream": False
         }
-        async with self.session.post(model_prompt_url, headers=headers, json=data) as response:
+        async with self.session.post(image_url, headers=headers, json=data) as response:
             return json.loads(await response.text())
 
     async def urls_to_base64(self, url_list, logger, timeout=10):
