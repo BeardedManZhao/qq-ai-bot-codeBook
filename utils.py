@@ -16,7 +16,7 @@ class TimeBoundedList:
     一个具有指定元素数量 以及 每个元素过期时间的数据容器
     """
 
-    def __init__(self, ttl, max_size):
+    def __init__(self, ttl, max_size, is_group):
         """
         初始化TimeBoundedList实例。
 
@@ -27,6 +27,7 @@ class TimeBoundedList:
         self.container = deque(maxlen=max_size)  # 使用双端队列存储(插入时间, 数据)的元组
         self.config = {}  # 用于存储此空间的一些临时配置
         # 设置默认值
+        self.set_config("群组模式", is_group)
         self.set_space_use_ly_mbl_api(self.use_ly_mbl_api())
 
     def set_config(self, config_name: str, config_value):
@@ -37,6 +38,9 @@ class TimeBoundedList:
         :return:
         """
         self.config[config_name] = config_value
+
+    def set_configs(self, config_json):
+        self.config = config_json
 
     def get_config(self, config_name: str, def_value):
         """
@@ -49,6 +53,9 @@ class TimeBoundedList:
             return self.config[config_name]
         else:
             return def_value
+
+    def get_configs(self):
+        return self.config
 
     def get_configs_string(self):
         """
@@ -74,16 +81,22 @@ class TimeBoundedList:
         return self.get_config("聊天模式", def_value)
 
     def set_space_model_type(self, model_string, type_string):
-        if model_string is None:
-            model_string = '默认'
-        if type_string is None:
-            type_string = '默认'
-        self.set_config("模型型号", model_string)
-        self.set_config("数据风格", type_string)
+        if model_string is not None:
+            self.set_config("模型型号", model_string)
+        if type_string is not None:
+            self.set_config("数据风格", type_string)
+
+    def get_space_type(self, def_type_string):
+        return self.set_config("数据风格", def_type_string)
+
+    def get_space_model(self, def_model_string):
+        return self.get_config("模型型号", def_model_string)
 
     def set_space_model_url(self, model_url: str, model_group_url: str):
-        self.set_config("model_url", model_url)
-        self.set_config("model_group_url", model_group_url)
+        if model_url is not None:
+            self.set_config("model_url", model_url)
+        if model_group_url is not None:
+            self.set_config("model_group_url", model_group_url)
 
     def get_space_model_url(self, def_value):
         return self.get_config("model_url", def_value)

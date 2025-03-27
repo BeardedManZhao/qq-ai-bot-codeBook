@@ -10,6 +10,7 @@ from typing import Any
 import botpy
 import jieba
 from botpy import Intents
+from botpy.errors import ServerError
 from botpy.ext.cog_yaml import read
 
 from lyMblApi import LyMblApiJvm
@@ -45,6 +46,12 @@ file_handler.setLevel(logging.DEBUG)
 # 设置您码本API 的id和sk
 server_id = test_config['model_server_id']
 server_sk = test_config['model_server_sk']
+
+# 设置用户数据存储位置
+if 'user_data_path' in test_config:
+    user_data_path = test_config['user_data_path']
+else:
+    user_data_path = None
 
 
 def create_url(model_type=test_config['model_server_type'], model=test_config['model_server_model']):
@@ -101,15 +108,17 @@ async def translate_string(src_lang, tar_lang, translate_str):
         f"{translate_url}&str={translate_str}&srcLang={src_lang}&targetLang={tar_lang}")
 
 
-def clean(history_chats, message_id):
+def clean(history_chats, message_id, is_group):
     """
     清理消息记录
+    :param is_group: 是否属于群组模式
     :param history_chats: 这个是消息列表
     :param message_id: 消息记录对应的 id
     :return: 处理成功的消息
     """
     history_chats[message_id] = TimeBoundedList(
-        ttl=test_config['userMessageMaxTtl'], max_size=test_config['groupMessageMaxLen']
+        ttl=test_config['userMessageMaxTtl'], max_size=test_config['groupMessageMaxLen'],
+        is_group=is_group
     )
     return f"清理空间：【{StrUtils.desensitization(message_id)}】的数据成功！"
 
@@ -203,7 +212,7 @@ class MyClient(botpy.Client):
 
         # 追加 clean 命令
         def command_clean(string, list_args, message_list_id, user_openid, is_group):
-            return clean(self.history_chats, message_list_id)
+            return clean(self.history_chats, message_list_id, is_group)
 
         command_handler.push_command("清理", command_clean, False)
 
@@ -220,11 +229,19 @@ class MyClient(botpy.Client):
             """
             command_clean(string, list_args, message_list_id, user_openid, is_group)
             hc = self.safe_history_get_or_create(message_list_id, is_group)[0]
-            if len(list_args) <= 1:
+            if len(list_args) == 0:
+                list_args = [
+                    hc.get_space_type(def_type_string=test_config['model_server_type']),
+                    hc.get_space_model(def_model_string=test_config['model_server_model'])
+                ]
+            if len(list_args) == 1:
+                # 由于没有设置模型 只是改类型 因此我们获取一下原本的模型
+                old_model = hc.get_space_model(def_model_string=test_config['model_server_model'])
                 hc.set_space_model_url(
-                    create_url(list_args[0]), create_group_model_url(list_args[0] + '_group')
+                    create_url(list_args[0], old_model),
+                    create_group_model_url(list_args[0] + '_group', old_model)
                 )
-                hc.set_space_model_type(None, list_args[0])
+                hc.set_space_model_type(old_model, list_args[0])
                 return f"已将您所属空间的类型设置为【{list_args[0]}】\n\n此操作可能会更改一些行为，但区别不大，若需要还原请使用命令【/清理】"
             else:
                 hc.set_space_model_url(
@@ -442,6 +459,15 @@ class MyClient(botpy.Client):
                 logger.info(
                     f"【ok】时间：{date_str}; realId:{real_id}; 玩家:{user_mark}; 消息:{content}; 回复:{reply_content}")
 
+        except ServerError as se:
+            error_string = str(se).replace('.', '_')
+            logger.error(f"腾讯拦截了消息，没有成功回答：{content}，因为：{error_string}")
+            await message_bot.reply(
+                content=f"模型已成功生成回答，但被qq拦截了，下面是qq返回的错误信息！\n====\n{error_string}")
+            await message_bot.reply(
+                content=f"不用担心，您可以尝试换一种问法哦~\n\n====\n\n更多详情：https://www.lingyuzhao.top/b/Article/-2321317989405261",
+                msg_seq='2'
+            )
         except Exception as e:
             logger.error(f"处理消息时出错：{str(e)}：{traceback.format_exc()}")
             if need_hidden_module:
@@ -649,7 +675,8 @@ class MyClient(botpy.Client):
             # 代表是群消息
             if real_id not in self.history_chats:
                 self.history_chats[real_id] = TimeBoundedList(
-                    ttl=test_config['userMessageMaxTtl'], max_size=test_config['groupMessageMaxLen']
+                    ttl=test_config['userMessageMaxTtl'], max_size=test_config['groupMessageMaxLen'],
+                    is_group=is_group
                 )
                 is_first = True
             res = self.history_chats[real_id]
@@ -657,7 +684,8 @@ class MyClient(botpy.Client):
             # 代表是个人消息
             if real_id not in self.history_chats:
                 self.history_chats[real_id] = TimeBoundedList(
-                    ttl=test_config['userMessageMaxTtl'], max_size=test_config['userMessageMaxLen']
+                    ttl=test_config['userMessageMaxTtl'], max_size=test_config['userMessageMaxLen'],
+                    is_group=is_group
                 )
                 is_first = True
             res = self.history_chats[real_id]
@@ -752,13 +780,82 @@ class MyClient(botpy.Client):
         await self.handler_message_fun(message.content,
                                        message.author.user_openid, message.author.user_openid, message)
 
+    def load_config_one_user(self, chat_id, config):
+        res, is_first = self.safe_history_get_or_create(chat_id, config['群组模式'])
+        res.set_configs(config)
+        logger.info(f"加载【{chat_id}】的配置，成功！")
+
+    def load_config_all_user(self):
+        """
+        加载用户数据。
+        如果 user_data_path 文件存在，则加载其中的数据并更新 history_chats。
+        """
+        if user_data_path is None:
+            logger.warning("未设置 user_data_path，因此无法持久化用户的数据~")
+            return
+
+        if not os.path.exists(user_data_path):
+            logger.info(f"配置文件 {user_data_path} 不存在，跳过加载。")
+            return
+
+        try:
+            with open(user_data_path, 'r', encoding='utf-8') as f:
+                loaded_data = json.load(f)
+
+            # 更新 history_chats
+            count = 0
+            for chat_id, config in loaded_data.items():
+                self.load_config_one_user(chat_id, config)
+                count += 1
+            logger.info(f"配置已成功从 {user_data_path} 加载。共有{count}个用户配置！")
+        except Exception as e:
+            logger.error(f"加载配置时出错: {e}")
+
+    def save_config(self):
+        """
+        保存用户数据 一般是用来在程序终止的时候操作的
+        """
+        if user_data_path is None:
+            logger.warning("未设置 user_data_path，因此无法持久化用户的数据~")
+            return
+        res = {}
+        for chat_id, chat_obj in self.history_chats.items():
+            res[chat_id] = chat_obj.get_configs()  # 获取每个聊天对象的配置
+
+        # 将数据保存到文件
+        try:
+            with open(user_data_path, 'w', encoding='utf-8') as f:
+                json.dump(res, f, ensure_ascii=False, indent=4)
+            logger.info(f"配置已成功保存到 {user_data_path}")
+        except Exception as e:
+            print(f"保存配置时出错: {e}")
+
 
 if __name__ == "__main__":
     import asyncio
+    import signal
 
-    try:
-        intents = botpy.Intents(public_messages=True, public_guild_messages=True, direct_message=True)
-        client = MyClient(intents1=intents)
-        client.run(appid=test_config["appid"], secret=test_config["secret"])
-    finally:
+    intents = botpy.Intents(public_messages=True, public_guild_messages=True, direct_message=True)
+    client = MyClient(intents1=intents)
+    client.load_config_all_user()
+
+    def cleanup(signum, frame):
+        """
+        当进程收到终止信号时调用此函数。
+        可在此处添加调用 diamond 的代码。
+        """
+        logger.info(f"Caught signal {signum}, initiating cleanup...")
         lyMblApi.close()
+        if client is not None:
+            client.save_config()
+        # 清理完成后退出程序
+        sys.exit(0)
+
+
+    # 监听 Ctrl+C（SIGINT） 和 kill（SIGTERM）信号
+    signal.signal(signal.SIGINT, cleanup)  # 处理 Ctrl+C
+    signal.signal(signal.SIGTERM, cleanup)  # 处理 kill
+
+    # 开始启动
+    client.run(appid=test_config["appid"], secret=test_config["secret"])
+
