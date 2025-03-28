@@ -226,6 +226,7 @@ class HttpClient:
             think_string = []
             res_list = []
             count = 1
+            suspected_mark_down = False
             try:
                 if stream:
                     # 如果是流式处理，逐行读取并解析响应
@@ -248,13 +249,28 @@ class HttpClient:
                                         # 不是在 think 且 token 有数据
                                         elif not in_think and len(res_string) != 0:
                                             res_list.append(res_string)
+                                            # 查看当前的 token 中是否有 markdown 的字符
+                                            # 如果有 markdown 或者如果之前有 markdown 就先不发送 只追加
+                                            suspected_mark_down = (
+                                                    suspected_mark_down or
+                                                    StrUtils.contains_multiple_characters(
+                                                        res_string, StrUtils.markdown_string_mark
+                                                    )
+                                            )
                                             if count <= 4 and '\n' in res_string:
+                                                # 如果满足条件 查看是否处于markdown
+                                                if suspected_mark_down:
+                                                    # 复位
+                                                    suspected_mark_down = False
+                                                    # 处于 markdown 就先不发送
+                                                    continue
                                                 # 代表是换段 同时消息数量小于4 可以继续发送
                                                 reply_content = ''.join(res_list).strip()
                                                 if len(reply_content) != 0:
                                                     await stream_fun(reply_content, think_string, count)
                                                     res_list = []
                                                     count += 1
+
                             except json.JSONDecodeError:
                                 continue  # 忽略无法解析为JSON的数据
                     # 迭代结束 看看是否还有没发送的
@@ -409,6 +425,11 @@ class CommandHandler:
 
 
 class StrUtils:
+
+    markdown_string_mark = {
+        '#', '*', '-', '`'
+    }
+
     @staticmethod
     def trim_at_message(string) -> str:
         """
@@ -516,6 +537,17 @@ class StrUtils:
             return StrUtils.id_to_short_identifier(user_openid)
         else:
             return user_openid
+
+    @staticmethod
+    def contains_multiple_characters(string, characters: set):
+        """
+        判断一个字符串中是否包含指定的字符
+        :param string: 需要被判断的字符串
+        :param characters: 匹配的字符
+        :return: 包含返回 true
+        """
+        # 检查交集是否非空
+        return not characters.isdisjoint(string)
 
 
 class BotUtils:
