@@ -9,6 +9,7 @@ from typing import Any
 
 import botpy
 import jieba
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from botpy import Intents
 from botpy.errors import ServerError
 from botpy.ext.cog_yaml import read
@@ -104,6 +105,17 @@ translate_url = (f"https://api.get.lingyuzhao.top:8081/api/translate?"
 # 查看是否允许模型调用
 need_hidden_module = test_config['needHiddenModule']
 
+# 初始化码本录API
+if 'codebook_lyMbl_user_name' in test_config and 'codebook_lyMbl_user_password' in test_config:
+    logger.info("正在让qq机器人登录码本录...")
+    res = lyMblApi.run("model_codebook_api", "登录", [
+        test_config['codebook_lyMbl_user_name'], test_config['codebook_lyMbl_user_password']
+    ])
+    logger.info(f"码本录：{res}")
+
+# 初始化慰问时间
+comfort_interval = test_config['comfort_interval']
+
 
 async def translate_string(src_lang, tar_lang, translate_str):
     return await http_client.fetch_text(
@@ -180,6 +192,21 @@ class MyClient(botpy.Client):
         logger.info(f"robot 「{self.robot.name}」 on_ready!")
         logger.info(f"默认的模型：{def_model_string}.{def_type_string}")
         await http_client.init_session()
+        # 加载定时器
+        scheduler = AsyncIOScheduler()  # 默认使用线程池执行器
+
+        async def interval_greet():
+            """
+            定时问候用户
+            """
+            await BotUtils.greet(
+                self.history_chats, http_client,
+                "给我写一封邮件，怎么写都可以哦（直接返回邮件内容，千万不要回复邮件内容以外的数据）", [],
+                create_url(def_type_string, def_model_string), lyMblApi, logger, def_type_string
+            )
+
+        scheduler.add_job(interval_greet, 'interval', seconds=comfort_interval)
+        scheduler.start()
 
     async def handler_message_fun(self, content, member_openid, user_openid, message_bot, is_group=False,
                                   is_channel=False):

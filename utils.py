@@ -9,6 +9,7 @@ from datetime import datetime
 import aiohttp
 from botpy.errors import ServerError
 
+from lyMblApi import LyMblApiJvm
 from tools import create_tools
 
 
@@ -23,6 +24,7 @@ class TimeBoundedList:
 
         :param ttl: int, 元素的有效时间（秒）
         :param max_size: int, 容器的最大元素数量
+        :param is_group: 是否属于群组
         """
         self.ttl = ttl
         self.container = deque(maxlen=max_size)  # 使用双端队列存储(插入时间, 数据)的元组
@@ -216,8 +218,25 @@ class HttpClient:
         :param history_chat: 聊天历史消息列表
         :return: 模型的 json 或者 None（对于流式数据）
         """
+        return await self.fetch_model_use_list_message(
+            model_url, headers, history_chat.get_items(), stream, stream_fun, qq_error_fun, think_mark
+        )
+
+    async def fetch_model_use_list_message(self, model_url: str, headers, history_chat: list, stream: bool = False,
+                                           stream_fun=None, qq_error_fun=None, think_mark='think'):
+        """
+        向模型发起对话请求
+        :param qq_error_fun: 当 qq服务器返回异常的时候 要调用的函数，要求输入为（异常对象，count值:int） 不可以为空
+        :param think_mark: 思考标记 在标记中的数据将不会被发送
+        :param stream_fun: 如果是使用的流，则数据会直接传递到此函数中
+        :param stream: 是否要使用流式数据
+        :param model_url: 模型API 的 url
+        :param headers: 头数据
+        :param history_chat: 聊天历史消息列表
+        :return: 模型的 json 或者 None（对于流式数据）
+        """
         data = {
-            "messages": history_chat.get_items(),
+            "messages": history_chat,
             "stream": stream,
         }
         think_start, think_end = f"<{think_mark}>", f"</{think_mark}>"
@@ -425,7 +444,6 @@ class CommandHandler:
 
 
 class StrUtils:
-
     markdown_string_mark = {
         '#', '*', '-', '`'
     }
@@ -551,6 +569,66 @@ class StrUtils:
 
 
 class BotUtils:
+
+    @staticmethod
+    async def greet(users: {str: TimeBoundedList}, http_client: HttpClient, greet_message, headers, model_url,
+                    ly_mbl: LyMblApiJvm, logger, allow_type):
+        """
+        依次问候每个用户 TODO 请确保此函数在另一个线程执行，此函数需要很久时间
+        :param logger: 日志对象
+        :param users:用户的 json key是用户在 jvm 中的id，value 是用户的配置对象
+        :param http_client: 请求客户端
+        :param greet_message: 用于生成问候的句子
+        :param headers: 头
+        :param model_url: 发送邮件需要使用的模型 url
+        :param ly_mbl: 要使用的 jvm 码本 API
+        :param allow_type: 允许慰问的 type
+        """
+        if ly_mbl is None:
+            return
+        count = 0
+        for uk in users:
+            count += 1
+            u = users[uk]
+            start_message = f"* 【{count}】问候用户 {uk} 任务："
+            # 查看是否是群组 群组不可以问候
+            if u.get_config("群组模式", True):
+                continue
+            # 查这个类型是否可以慰问
+            allow_type_value = u.get_space_type(allow_type)
+            if allow_type != allow_type_value:
+                continue
+            # 查是否登录了 未登录不可以问候
+            if '失败' in ly_mbl.run(uk, "查LY码本录身份", []):
+                logger.info(start_message + "未登录码本，无法慰问~")
+                continue
+
+            messages = u.get_items()
+
+            # 获取到用户的消息
+            messages.append({
+                "role": "user",
+                "content": f"【系统消息】当前时间：{StrUtils.get_current_time_formatted()}\n\n【定时任务】{greet_message}"
+            })
+            # 找模型要一句问候
+            resp = await http_client.fetch_model_use_list_message(
+                # 模型链接
+                model_url=model_url,
+                headers=headers,
+                history_chat=messages
+            )
+            temp = resp["message"]
+            if type(temp) is not str:
+                reply_content = StrUtils.get_last_segment(temp['content']).replace('\n', '<br/>')
+                # 开始处理回复消息
+                r = ly_mbl.run(uk, '发送邮件到我', [reply_content])
+                # 保存回复消息
+                u.append({
+                    "role": "assistant",
+                    "content": "我发给了主人一封邮件喵~ 已经送到主人邮箱啦！"
+                })
+
+                logger.info(start_message + str(r).strip())
 
     @staticmethod
     def group_attachments_by_type(message) -> defaultdict:

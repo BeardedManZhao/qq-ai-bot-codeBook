@@ -33,6 +33,12 @@ appid: "*********"
 secret: "*********"
 # 机器人名字
 botName: "neko"
+# 机器人要绑定的码本用户名
+codebook_lyMbl_user_name: "****"
+# 机器人要绑定的码本账户对应的密码
+codebook_lyMbl_user_password: "********"
+# 慰问间隔时间(s)
+comfort_interval: 86400
 # 用户消息的最大记录数量
 userMessageMaxLen: 10
 # 群/频道消息的最大记录数量
@@ -97,6 +103,28 @@ python qqgroup-ai-bot.py <配置文件路径>
 
 ![69e58f74454c0b12768f031857cd3436c540a08dae6df302a8eeeb43d6a55093](https://diskmirror.lingyuzhao.top/DiskMirrorBackEnd/FsCrud/downLoad/4/Binary?fileName=Article/Image/-3439099015597393/69e58f74454c0b12768f031857cd3436c540a08dae6df302a8eeeb43d6a55093.webp)
 
+## 隐藏小功能
+
+### 慰问
+
+neko 会在您不在的时候，偷偷利用码本录的系统给您发送消息哦~
+
+> 触发条件
+> 1. 您需要在**私聊页面**，通过 neko 登录您的码本录账号！
+> 2. 您需要在**私聊页面**和 neko 交流对话，让neko记住您
+> 3. 您需要等待一段时间（就是配置 `comfort_interval` 的值）以及以上的时间，neko有概率会偷偷给您小惊喜
+
+> 若您是开发者，还需要以下操作
+> 1. 您需要确保neko系统不重启，因为重启会忘记聊天记录，需要重新等待时间
+> 2. 您需要为 neko 配置一个码本的用户名和密码，就是配置项目 `codebook_lyMbl_user_name` 和 `codebook_lyMbl_user_password`
+
+### 意图识别
+
+neko 可以根据您的话语使用电脑来执行一些操作，包括但不限于 上网搜索数据，查询当前时间，持久化保存数据
+
+### none 自定义引导
+
+当您将 neko 设置为 `none` 的type 的时候，您可以使用自己的话语来引导她，实现自定义角色的效果~
 
 ## 实机演示视频
 
