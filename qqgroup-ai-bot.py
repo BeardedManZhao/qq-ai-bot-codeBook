@@ -9,6 +9,7 @@ from typing import Any
 
 import botpy
 import jieba
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from botpy import Intents
 from botpy.errors import ServerError
@@ -105,16 +106,33 @@ translate_url = (f"https://api.get.lingyuzhao.top:8081/api/translate?"
 # 查看是否允许模型调用
 need_hidden_module = test_config['needHiddenModule']
 
-# 初始化码本录API
-if 'codebook_lyMbl_user_name' in test_config and 'codebook_lyMbl_user_password' in test_config:
-    logger.info("正在让qq机器人登录码本录...")
-    res = lyMblApi.run("model_codebook_api", "登录", [
-        test_config['codebook_lyMbl_user_name'], test_config['codebook_lyMbl_user_password']
-    ])
-    logger.info(f"码本录：{res}")
+
+def init_neko_codebook():
+    # 初始化码本录API
+    if 'codebook_lyMbl_user_name' in test_config and 'codebook_lyMbl_user_password' in test_config:
+        logger.info("正在让qq机器人登录码本录...")
+        res = lyMblApi.run("model_codebook_api", "登录", [
+            test_config['codebook_lyMbl_user_name'], test_config['codebook_lyMbl_user_password']
+        ])
+        logger.info(f"码本录：{res}")
+
 
 # 初始化慰问时间
 comfort_interval = test_config['comfort_interval']
+
+# 创建一个线程池，指定最大线程数为 5
+thread_pool = ThreadPoolExecutor(max_workers=5)
+
+# 创建调度器，并分别配置异步执行器和线程池执行器
+async_scheduler = AsyncIOScheduler(
+    executors={
+        'async': {'type': 'asyncio'},  # 配置异步执行器
+        'default': thread_pool         # 配置线程池执行器
+    }
+)
+# 初始化neko的码本账号
+init_neko_codebook()
+async_scheduler.add_job(init_neko_codebook, 'interval', seconds=36000, executor='default')
 
 
 async def translate_string(src_lang, tar_lang, translate_str):
@@ -192,8 +210,6 @@ class MyClient(botpy.Client):
         logger.info(f"robot 「{self.robot.name}」 on_ready!")
         logger.info(f"默认的模型：{def_model_string}.{def_type_string}")
         await http_client.init_session()
-        # 加载定时器
-        scheduler = AsyncIOScheduler()  # 默认使用线程池执行器
 
         async def interval_greet():
             """
@@ -201,12 +217,12 @@ class MyClient(botpy.Client):
             """
             await BotUtils.greet(
                 self.history_chats, http_client,
-                "给我写一封邮件，怎么写都可以哦（直接返回邮件内容，千万不要回复邮件内容以外的数据）", [],
+                "小家伙，给我写一封邮件，怎么写都可以哦（这是用户的定时任务，你的回复会直接作为邮件内容发送给用户，因此请直接返回邮件内容，千万不要回复邮件内容以外的数据）", [],
                 create_url(def_type_string, def_model_string), lyMblApi, logger, def_type_string
             )
 
-        scheduler.add_job(interval_greet, 'interval', seconds=comfort_interval)
-        scheduler.start()
+        async_scheduler.add_job(interval_greet, 'interval', seconds=comfort_interval, executor='async')
+        async_scheduler.start()
 
     async def handler_message_fun(self, content, member_openid, user_openid, message_bot, is_group=False,
                                   is_channel=False):

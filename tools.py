@@ -25,11 +25,11 @@ tools = [
                 "properties": {
                     "username": {
                         "type": "string",
-                        "description": "这个是目标邮件的邮箱地址，代表要发送给哪个邮箱"
+                        "description": "这个是登录码本录系统时候要用的用户名"
                     },
                     "password": {
                         "type": "string",
-                        "description": "这个是邮件的标题，不可以为空哦"
+                        "description": "这个是登录码本录系统时候要用的密码"
                     }
                 }
             }
@@ -43,8 +43,8 @@ tools = [
             "parameters": {
                 "properties": {
                     "target": {
-                        "type": "string",
-                        "description": "这个是目标用户ID"
+                        "type": "int",
+                        "description": "这个是目标用户ID，是一个数值"
                     },
                     "title": {
                         "type": "string",

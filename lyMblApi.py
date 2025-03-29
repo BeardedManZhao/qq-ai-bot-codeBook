@@ -65,7 +65,7 @@ class LyMblApiJvm:
                         continue
                     arg = arguments[p_name]
                     if len(arg) != 0:
-                        args.append(arg)
+                        args.append(str(arg))
 
                 # 开始调用
                 res_str.append('\n* 系统消息：根据用户要求执行 ')
