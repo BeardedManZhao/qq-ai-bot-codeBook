@@ -1,4 +1,4 @@
-![image](https://github.com/user-attachments/assets/7ffe55b7-ebe8-4027-af83-b6ed0ae306f7)
+![图片1](https://github.com/user-attachments/assets/88f72def-2eef-49f4-9a24-121ff050aaf3)
 
 > 如果需要体验线上机器人，可以进入群体验哦！！
 > 
