@@ -18,7 +18,7 @@ class TimeBoundedList:
     一个具有指定元素数量 以及 每个元素过期时间的数据容器
     """
 
-    def __init__(self, ttl, max_size, is_group):
+    def __init__(self, ttl, max_size, is_group, container_obj=None):
         """
         初始化TimeBoundedList实例。
 
@@ -27,7 +27,10 @@ class TimeBoundedList:
         :param is_group: 是否属于群组
         """
         self.ttl = ttl
-        self.container = deque(maxlen=max_size)  # 使用双端队列存储(插入时间, 数据)的元组
+        if container_obj is None:
+            self.container = deque(maxlen=max_size)  # 使用双端队列存储(插入时间, 数据)的元组
+        else:
+            self.container = container_obj
         self.config = {}  # 用于存储此空间的一些临时配置
         # 设置默认值
         self.set_config("管理员表", "禁用")
@@ -112,11 +115,23 @@ class TimeBoundedList:
     def get_space_chat_fun(self, def_value):
         return self.get_config("聊天模式", def_value)
 
-    def set_space_model_type(self, model_string, type_string):
-        if model_string is not None:
-            self.set_config("模型型号", model_string)
-        if type_string is not None:
-            self.set_config("数据风格", type_string)
+    async def set_space_model_type(self, http_client, url, model_string, type_string):
+        """
+        设置并校验模型参数
+        :param url:
+        :param http_client:
+        :param model_string:
+        :param type_string:
+        :return: 返回校验结果 如果成功设置了就返回 ok 反之返回错误信息
+        """
+        # 先检查
+        check = await http_client.check_model_type(url, model_string, type_string)
+        if check == 'ok':
+            if model_string is not None:
+                self.set_config("模型型号", model_string)
+            if type_string is not None:
+                self.set_config("数据风格", type_string)
+        return check
 
     def get_space_type(self, def_type_string):
         return self.get_config("数据风格", def_type_string)
@@ -437,6 +452,35 @@ class HttpClient:
                 if logger is not None:
                     logger.warning(f"图片转换失败【{str(e)}】：{url_list}")
         return res
+
+    async def check_model_type(self, url, model_value=None, type_value=None):
+        """
+        检查模型参数
+        :param url: 检查API
+        :param model_value: 模型值
+        :param type_value: 类型值
+        :return: 结果 如果没问题返回一个 json 其中 message 是 'ok'
+        """
+        res = [url]
+        if model_value is not None:
+            res.append("model")
+            res.append("=")
+            res.append(model_value)
+            res.append('&')
+        if type_value is not None:
+            res.append("type")
+            res.append("=")
+            res.append(type_value)
+        if len(res) <= 1:
+            return 'ok'
+        async with self.session.get(''.join(res), headers=[]) as response:
+            # 检查响应的状态码是否为 200 (OK)
+            if response.status != 200:
+                return json.loads(await response.text())['message']
+            else:
+                r = json.loads(await response.text())
+                if 'message' in r:
+                    return r['message']
 
     async def close(self):
         await self.session.close()

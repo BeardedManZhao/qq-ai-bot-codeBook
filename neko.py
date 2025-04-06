@@ -17,6 +17,7 @@ from botpy.ext.cog_yaml import read
 
 from constant import Constant
 from lyMblApi import LyMblApiJvm
+from online_count import OnlineCount
 from utils import HttpClient, CommandHandler, StrUtils, BotUtils
 from utils import TimeBoundedList
 
@@ -104,6 +105,9 @@ http_client = HttpClient()
 translate_url = (f"https://api.get.lingyuzhao.top:8081/api/translate?"
                  f"sk={test_config['translate_server_sk']}&id={test_config['translate_server_id']}")
 
+# 检查API地址
+check_model_type_url = "https://api.get.lingyuzhao.top:8081/api/chat/check?"
+
 # 查看是否允许模型调用
 need_hidden_module = test_config['needHiddenModule']
 
@@ -134,6 +138,9 @@ async_scheduler = AsyncIOScheduler(
 # 初始化neko的码本账号
 init_neko_codebook()
 async_scheduler.add_job(init_neko_codebook, 'interval', seconds=36000, executor='default')
+
+# 初始化在线人数记录器 120秒 的心跳记录
+online_count = OnlineCount(120)
 
 
 async def translate_string(src_lang, tar_lang, translate_str):
@@ -242,6 +249,11 @@ class NekoClient(botpy.Client):
                                   is_channel=False):
         # 解析到 id 这个是可以直接用于获取消息列表的
         real_id = CommandHandler.parse_message_id(member_openid, message_bot, is_group, is_channel)
+        # 统计
+        if is_group:
+            online_count.append(f"群{real_id}")
+        else:
+            online_count.append(real_id)
         # 获取到消息列表
         fc, is_first = self.safe_history_get_or_create(real_id, is_group)
         # 获取到处理函数并调用 默认是 stream 模式
@@ -291,7 +303,7 @@ class NekoClient(botpy.Client):
         command_handler.push_command("清理", command_clean, False)
 
         # 设置 model_type 的命令
-        def command_set_model_type(string, list_args, message_list_id, user_openid, is_group):
+        async def command_set_model_type(string, list_args, message_list_id, user_openid, is_group):
             """
             设置 model_type
             :param user_openid: 可以代表用户个体的 id
@@ -318,48 +330,57 @@ class NekoClient(botpy.Client):
                 if 'model' in list_args0:
                     # 由于没有设置类型 只是改模型 因此我们获取一下原本的类型
                     old_type = hc.get_space_type(def_type_string=def_type_string)
+                    check = await hc.set_space_model_type(http_client, check_model_type_url, list_args0, old_type)
+                    if check == 'ok':
+                        hc.set_space_model_url(
+                            create_url(old_type, list_args0),
+                            create_group_model_url(old_type, list_args0)
+                        )
+                        return (f"您的所属空间类型没有变更\n\n已将您所属空间的模式设置为【{list_args0}】"
+                                f"\n\n此操作会更改一些行为，可能会有一些区别，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
+                                f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87"
+                                f"%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
+                                f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
+                                f"/设置类型 {def_type_string} {def_model_string}"
+                                )
+                    else:
+                        return check
+                else:
+                    # 由于没有设置模型 只是改类型 因此我们获取一下原本的模型
+                    old_model = hc.get_space_model(def_model_string=def_model_string)
+                    check = await hc.set_space_model_type(http_client, check_model_type_url, old_model, list_args0)
+                    if check == 'ok':
+                        hc.set_space_model_url(
+                            create_url(list_args0, old_model),
+                            create_group_model_url(list_args0 + '_group', old_model)
+                        )
+                        return (f"已将您所属空间的类型设置为【{list_args0}】\n\n您的所属空间模式没有变更"
+                                f"\n\n此操作会更改一些行为，但区别不大，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
+                                f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87"
+                                f"%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
+                                f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
+                                f"/设置类型 {def_type_string} {def_model_string}"
+                                )
+                    else:
+                        return check
+            else:
+                check = await hc.set_space_model_type(http_client, check_model_type_url, list_args[1], list_args[0])
+                if check == 'ok':
                     hc.set_space_model_url(
-                        create_url(old_type, list_args0),
-                        create_group_model_url(old_type, list_args0)
+                        create_url(list_args[0], list_args[1]),
+                        create_group_model_url(list_args[0] + '_group', list_args[1])
                     )
-                    hc.set_space_model_type(list_args0, old_type)
-                    return (f"您的所属空间类型没有变更\n\n已将您所属空间的模式设置为【{list_args0}】"
-                            f"\n\n此操作会更改一些行为，可能会有一些区别，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
+                    return (f"已将您所属空间的类型设置为【{list_args[0]}】\n\n已将您所属空间的模式设置为【{list_args[1]}】"
+                            f"\n\n此操作可能会更改一些大量行为，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
                             f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87"
                             f"%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
                             f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
                             f"/设置类型 {def_type_string} {def_model_string}"
                             )
                 else:
-                    # 由于没有设置模型 只是改类型 因此我们获取一下原本的模型
-                    old_model = hc.get_space_model(def_model_string=def_model_string)
-                    hc.set_space_model_url(
-                        create_url(list_args0, old_model),
-                        create_group_model_url(list_args0 + '_group', old_model)
-                    )
-                    hc.set_space_model_type(old_model, list_args0)
-                    return (f"已将您所属空间的类型设置为【{list_args0}】\n\n您的所属空间模式没有变更"
-                            f"\n\n此操作会更改一些行为，但区别不大，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
-                            f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87"
-                            f"%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
-                            f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
-                            f"/设置类型 {def_type_string} {def_model_string}"
-                            )
-            else:
-                hc.set_space_model_url(
-                    create_url(list_args[0], list_args[1]),
-                    create_group_model_url(list_args[0] + '_group', list_args[1])
-                )
-                hc.set_space_model_type(list_args[1], list_args[0])
-                return (f"已将您所属空间的类型设置为【{list_args[0]}】\n\n已将您所属空间的模式设置为【{list_args[1]}】"
-                        f"\n\n此操作可能会更改一些大量行为，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
-                        f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87"
-                        f"%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
-                        f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
-                        f"/设置类型 {def_type_string} {def_model_string}"
-                        )
+                    return check
 
-        command_handler.push_command("设置类型", command_set_model_type, False)
+        command_handler.push_command("设置类型", command_set_model_type, True)
 
         def command_set_stream_by_line(string, list_args, message_list_id, user_openid, is_group):
             hc = self.safe_history_get_or_create(message_list_id, is_group)[0]
@@ -455,6 +476,11 @@ class NekoClient(botpy.Client):
                 return f"未找到的管理员操作【{a}】"
 
         command_handler.push_command("管理员", command_update_admin, False)
+
+        def command_online_count(string, list_args, message_list_id, user_openid, is_group):
+            return online_count.count_get_string()
+
+        command_handler.push_command("在线统计", command_online_count, False)
 
         # 日志处理
         logger.info(
@@ -1007,4 +1033,3 @@ class NekoClient(botpy.Client):
             logger.info(f"配置已成功保存到 {user_data_path}")
         except Exception as e:
             print(f"保存配置时出错: {e}")
-
