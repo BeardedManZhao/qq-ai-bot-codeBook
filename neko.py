@@ -52,6 +52,7 @@ server_id = test_config[Constant.config_name1[0]]
 server_sk = test_config[Constant.config_name1[1]]
 
 def_type_string = test_config[Constant.config_name1[2]]
+def_type_group_string = test_config[Constant.config_name1[9]]
 def_model_string = test_config[Constant.config_name1[3]]
 
 # 设置用户数据存储位置
@@ -77,8 +78,18 @@ def create_prompt_url(model_type=Constant.config_name1[7], model=test_config[Con
             f"&model={model}")
 
 
-def create_group_model_url(model_type=def_type_string, model=def_model_string):
-    return create_url(model_type, model)
+def create_group_model_url(model_type=def_type_group_string, model=def_model_string, no_need_append_type_group=False):
+    """
+    设置群组模式的 model 和 type
+    :param model_type:
+    :param model:
+    :param no_need_append_type_group: 如果不需要进行自动的 group 拼接 而是强制使用 model_type 则直接设置为 true 即可
+    :return:
+    """
+    if no_need_append_type_group:
+        return create_url(model_type, model)
+    else:
+        return create_url(model_type + "_group", model)
 
 
 def create_group_model_prompt_url(model_type=Constant.config_name1[7],
@@ -87,7 +98,7 @@ def create_group_model_prompt_url(model_type=Constant.config_name1[7],
 
 
 url = create_url()
-group_model_url = create_group_model_url()
+group_model_url = create_group_model_url(no_need_append_type_group=True)
 
 image_url = create_url(model_type='image_parse', model=test_config['model_server_model_image'])
 
@@ -318,13 +329,13 @@ class NekoClient(botpy.Client):
                 return Constant.s2
 
             command_clean(string, list_args, message_list_id, user_openid, is_group)
-            if len(list_args) == 0:
+            length = len(list_args)
+            if length == 0:
                 list_args = [
                     hc.get_space_type(def_type_string=def_type_string),
                     hc.get_space_model(def_model_string=def_model_string)
                 ]
-
-            if len(list_args) == 1:
+            if length == 1:
                 # 判断是set模型还是set类型
                 list_args0 = list_args[0]
                 if 'model' in list_args0:
@@ -334,14 +345,14 @@ class NekoClient(botpy.Client):
                     if check == 'ok':
                         hc.set_space_model_url(
                             create_url(old_type, list_args0),
-                            create_group_model_url(old_type, list_args0)
+                            create_group_model_url(old_type, list_args0, True)
                         )
                         return (f"您的所属空间类型没有变更\n\n已将您所属空间的模式设置为【{list_args0}】"
                                 f"\n\n此操作会更改运行的特性，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
                                 f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393"
                                 f"#4.%20%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
                                 f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
-                                f"/设置类型 {def_type_string} {def_model_string}"
+                                f"/设置类型 {def_type_group_string if is_group else def_type_string} {def_model_string}"
                                 )
                     else:
                         return check
@@ -352,14 +363,14 @@ class NekoClient(botpy.Client):
                     if check == 'ok':
                         hc.set_space_model_url(
                             create_url(list_args0, old_model),
-                            create_group_model_url(list_args0 + '_group', old_model)
+                            create_group_model_url(list_args0, old_model, True)
                         )
                         return (f"已将您所属空间的类型设置为【{list_args0}】\n\n您的所属空间模式没有变更"
                                 f"\n\n此操作会更改数据的风格，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
                                 f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393"
                                 f"#4.%20%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
                                 f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
-                                f"/设置类型 {def_type_string} {def_model_string}"
+                                f"/设置类型 {def_type_group_string if is_group else def_type_string} {def_model_string}"
                                 )
                     else:
                         return check
@@ -368,14 +379,14 @@ class NekoClient(botpy.Client):
                 if check == 'ok':
                     hc.set_space_model_url(
                         create_url(list_args[0], list_args[1]),
-                        create_group_model_url(list_args[0] + '_group', list_args[1])
+                        create_group_model_url(list_args[0], list_args[1], True)
                     )
                     return (f"已将您所属空间的类型设置为【{list_args[0]}】\n\n已将您所属空间的模式设置为【{list_args[1]}】"
                             f"\n\n此操作将改变数据风格以及运行特性，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
                             f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393"
                             f"#4.%20%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
                             f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
-                            f"/设置类型 {def_type_string} {def_model_string}"
+                            f"/设置类型 {def_type_group_string if is_group else def_type_string} {def_model_string}"
                             )
                 else:
                     return check
@@ -826,7 +837,7 @@ class NekoClient(botpy.Client):
                 # 异步获取模型 API响应
                 if is_group:
                     last_count, max_count_index = await http_client.fetch_model(
-                        model_url=hc.get_space_model_url(group_model_url),
+                        model_url=hc.get_space_model_group_url(group_model_url),
                         headers=[],
                         history_chat=hc,
                         stream=True,

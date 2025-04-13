@@ -10,6 +10,7 @@ class Constant:
         "model_server_type",
         "model_server_model",
         "none",
-        "model_server_model_image"
+        "model_server_model_image",
+        "model_server_type_group"
     ]
     greet_message = "小家伙，给我写一封邮件，怎么写都可以哦（这是用户的定时任务，你的回复会直接作为邮件内容发送给用户，因此请直接返回邮件内容，千万不要回复邮件内容以外的数据）"
