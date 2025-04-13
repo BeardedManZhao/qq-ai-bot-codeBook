@@ -337,9 +337,9 @@ class NekoClient(botpy.Client):
                             create_group_model_url(old_type, list_args0)
                         )
                         return (f"您的所属空间类型没有变更\n\n已将您所属空间的模式设置为【{list_args0}】"
-                                f"\n\n此操作会更改一些行为，可能会有一些区别，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
-                                f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87"
-                                f"%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
+                                f"\n\n此操作会更改运行的特性，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
+                                f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393"
+                                f"#4.%20%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
                                 f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
                                 f"/设置类型 {def_type_string} {def_model_string}"
                                 )
@@ -355,9 +355,9 @@ class NekoClient(botpy.Client):
                             create_group_model_url(list_args0 + '_group', old_model)
                         )
                         return (f"已将您所属空间的类型设置为【{list_args0}】\n\n您的所属空间模式没有变更"
-                                f"\n\n此操作会更改一些行为，但区别不大，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
-                                f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87"
-                                f"%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
+                                f"\n\n此操作会更改数据的风格，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
+                                f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393"
+                                f"#4.%20%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
                                 f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
                                 f"/设置类型 {def_type_string} {def_model_string}"
                                 )
@@ -371,9 +371,9 @@ class NekoClient(botpy.Client):
                         create_group_model_url(list_args[0] + '_group', list_args[1])
                     )
                     return (f"已将您所属空间的类型设置为【{list_args[0]}】\n\n已将您所属空间的模式设置为【{list_args[1]}】"
-                            f"\n\n此操作可能会更改一些大量行为，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
-                            f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393#%E5%86%85%E7%BD%AE%E6%8C%87"
-                            f"%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
+                            f"\n\n此操作将改变数据风格以及运行特性，您可以在下面的链接中查看到更多关于设置类型的信息\n\n"
+                            f"命令语法文档：https://www.lingyuzhao.top/b/Article/-3439099015597393"
+                            f"#4.%20%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n"
                             f"【/清理】可清理消息记录\n\n若需要还原配置，请使用下面的命令\n"
                             f"/设置类型 {def_type_string} {def_model_string}"
                             )
@@ -381,6 +381,11 @@ class NekoClient(botpy.Client):
                     return check
 
         command_handler.push_command("设置类型", command_set_model_type, True)
+        command_handler.push_command("设置模型", command_set_model_type, True)
+        command_handler.push_command("切换类型", command_set_model_type, True)
+        command_handler.push_command("切换模型", command_set_model_type, True)
+        command_handler.push_command("更改类型", command_set_model_type, True)
+        command_handler.push_command("更改模型", command_set_model_type, True)
 
         def command_set_stream_by_line(string, list_args, message_list_id, user_openid, is_group):
             hc = self.safe_history_get_or_create(message_list_id, is_group)[0]
@@ -663,8 +668,10 @@ class NekoClient(botpy.Client):
                     reply_content += ('\n\n----\n\n系统消息：\n'
                                       f"欢迎您使用 码本API 的 qq机器人服务！\n"
                                       f"qq机器人交流群：938229786\n"
-                                      f"neko开源交流群：931546838\n"
-                                      '关于更多信息，https://www.lingyuzhao.top/b/Article/-2321317989405261'
+                                      f"neko开源交流群：931546838\n\n"
+                                      '关于更多玩法：https://www.lingyuzhao.top/b/Article/-3439099015597393'
+                                      '#4.%20%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n'
+                                      '关于异常汇总：https://www.lingyuzhao.top/b/Article/-2321317989405261'
                                       )
 
                 await message_bot.reply(content=reply_content)
@@ -818,7 +825,7 @@ class NekoClient(botpy.Client):
 
                 # 异步获取模型 API响应
                 if is_group:
-                    await http_client.fetch_model(
+                    last_count, max_count_index = await http_client.fetch_model(
                         model_url=hc.get_space_model_url(group_model_url),
                         headers=[],
                         history_chat=hc,
@@ -827,7 +834,7 @@ class NekoClient(botpy.Client):
                         qq_error_fun=handler_qq_error
                     )
                 else:
-                    await http_client.fetch_model(
+                    last_count, max_count_index = await http_client.fetch_model(
                         model_url=hc.get_space_model_url(url),
                         headers=[],
                         history_chat=hc,
@@ -835,6 +842,18 @@ class NekoClient(botpy.Client):
                         stream_fun=handler_data,
                         qq_error_fun=handler_qq_error
                     )
+                # 处理最后的结尾
+                if is_first and last_count <= max_count_index:
+                    # 这个情况代表可以发送
+                    await handler_data('# 系统消息\n'
+                                       f"欢迎您使用 码本API 的 qq机器人服务！\n您如果遇到了问题请加群联系！\n\n"
+                                       f"qq机器人交流群：938229786\n"
+                                       f"neko开源交流群：931546838\n\n"
+                                       '关于更多玩法：https://www.lingyuzhao.top/b/Article/-3439099015597393'
+                                       '#4.%20%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n'
+                                       '关于异常汇总：https://www.lingyuzhao.top/b/Article/-2321317989405261',
+                                       '',
+                                       last_count + 1)
         except Exception as e:
             logger.error(f"处理消息时出错：{str(e)}：{traceback.format_exc()}")
             if need_hidden_module:

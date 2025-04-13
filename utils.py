@@ -306,16 +306,17 @@ class HttpClient:
         :param model_url: 模型API 的 url
         :param headers: 头数据
         :param history_chat: 聊天历史消息列表
-        :return: 模型的 json 或者 None（对于流式数据）
+        :return: 模型的 json 或者 (count, max_index_count)（对于流式数据 这里返回的 count 就是当前最后一条消息是第几段）
         """
         return await self.fetch_model_use_list_message(
             model_url, headers, history_chat.get_items(), stream, stream_fun, qq_error_fun, think_mark
         )
 
     async def fetch_model_use_list_message(self, model_url: str, headers, history_chat: list, stream: bool = False,
-                                           stream_fun=None, qq_error_fun=None, think_mark='think'):
+                                           stream_fun=None, qq_error_fun=None, think_mark='think', max_count_index=4):
         """
         向模型发起对话请求
+        :param max_count_index: 本次发送的消息 最大可以支持多少索引的消息，如 4 代表的是 5 条消息（因为索引从0开始）
         :param qq_error_fun: 当 qq服务器返回异常的时候 要调用的函数，要求输入为（异常对象，count值:int） 不可以为空
         :param think_mark: 思考标记 在标记中的数据将不会被发送
         :param stream_fun: 如果是使用的流，则数据会直接传递到此函数中
@@ -323,7 +324,7 @@ class HttpClient:
         :param model_url: 模型API 的 url
         :param headers: 头数据
         :param history_chat: 聊天历史消息列表
-        :return: 模型的 json 或者 None（对于流式数据）
+        :return: 模型的 json 或者 (count, max_index_count)（对于流式数据 这里返回的 count 就是当前最后一条消息是第几段）
         """
         data = {
             "messages": history_chat,
@@ -368,7 +369,7 @@ class HttpClient:
                                                         res_string, StrUtils.markdown_string_mark
                                                     )
                                             )
-                                            if count <= 4 and '\n' in res_string:
+                                            if count <= max_count_index and '\n' in res_string:
                                                 # 如果满足条件 查看是否处于markdown
                                                 if suspected_mark_down:
                                                     # 复位
@@ -392,7 +393,7 @@ class HttpClient:
                             await stream_fun(reply_content, think_string, count)
                         elif count == 1:
                             await stream_fun("模型似乎正在维护中呢，没有有效的回复~", think_string, count)
-                    return None  # 流式处理不返回最终结果
+                    return count, max_count_index  # 流式处理返回最后一条消息的 count
                 else:
                     json_text = await response.text()
                     try:
