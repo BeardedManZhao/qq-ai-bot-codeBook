@@ -240,11 +240,8 @@ command_handler = CommandHandler({
 
 
 class NekoClient(botpy.Client):
-    async def on_ready(self):
-        logger.info(f"robot 「{self.robot.name}」 on_ready!")
-        logger.info(f"默认的模型：{def_model_string}.{def_type_string}")
-        await http_client.init_session()
 
+    async def init_interval_scheduler(self):
         async def interval_greet():
             await BotUtils.greet(
                 self.history_chats, http_client,
@@ -255,6 +252,11 @@ class NekoClient(botpy.Client):
 
         async_scheduler.add_job(interval_greet, 'interval', seconds=comfort_interval, executor='async')
         async_scheduler.start()
+
+    async def on_ready(self):
+        logger.info(f"robot 「{self.robot.name}」 on_ready!")
+        logger.info(f"默认的模型：{def_model_string}.{def_type_string}")
+        await http_client.init_session()
 
     async def handler_message_fun(self, content, member_openid, user_openid, message_bot, is_group=False,
                                   is_channel=False):

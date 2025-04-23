@@ -1,3 +1,4 @@
+import asyncio
 import sys
 
 import botpy
@@ -10,7 +11,8 @@ if __name__ == "__main__":
     intents = botpy.Intents(public_messages=True, public_guild_messages=True, direct_message=True)
     client = NekoClient(intents1=intents)
     client.load_config_all_user()
-
+    # 初始化所有的异步任务
+    asyncio.run(client.init_interval_scheduler())
 
     def cleanup(signum, frame):
         """
