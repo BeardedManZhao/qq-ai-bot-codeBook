@@ -807,7 +807,8 @@ class NekoClient(botpy.Client):
                         "content": f"# 系统消息(注意，这不是用户发送的)\n"
                                    f"> 当前系统时间：{date_str}"
                                    f"\n\n----\n\n"
-                                   f"## 关于图片的解析结果：\n{res_message['content']}\n\n"
+                                   f"## 关于图片的解析结果：\n"
+                                   f"{res_message if type(res_message) == str else res_message['content']}\n\n"
                                    f"# 用户发送的消息（用户名：{user_mark}）这个才是用户发送的：\n\n----\n\n{content}"
                     })
 
