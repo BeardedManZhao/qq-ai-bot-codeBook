@@ -256,6 +256,10 @@ class NekoClient(botpy.Client):
     async def on_ready(self):
         logger.info(f"robot 「{self.robot.name}」 on_ready!")
         logger.info(f"默认的模型：{def_model_string}.{def_type_string}")
+        if lyMblApi is None:
+            logger.warning("未加载到 jar 插件，模型指令功能将失效！")
+        else:
+            logger.info("jar 插件正常，模型指令功能加载完毕！")
         await http_client.init_session()
 
     async def handler_message_fun(self, content, member_openid, user_openid, message_bot, is_group=False,
@@ -290,6 +294,30 @@ class NekoClient(botpy.Client):
     def __init__(self, intents1: Intents):
         super().__init__(intents1)
         self.history_chats = {}
+        self.already_reset = False
+
+        # 复位修复
+        def command_reset(string, list_args, message_list_id, user_openid, is_group):
+            hc = self.safe_history_get_or_create(message_list_id, is_group)[0]
+            if not hc.contains_op_user_id(user_openid, is_group):
+                return Constant.s2
+            if self.already_reset:
+                return "已经重载完毕，配置文件与上一次重载无差异！"
+            count = 0
+            for k in self.history_chats:
+                hc = self.history_chats[k]
+                # 复位的话需要将旧的获取到
+                old_model = hc.get_space_model(def_model_string=def_model_string)
+                old_type = hc.get_space_type(def_type_string=def_type_string)
+                # 然后在这里重新构建 url
+                hc.set_space_model_url(
+                            create_url(old_type, old_model),
+                            create_group_model_url(old_type, old_model, True)
+                        )
+                count += 1
+            self.already_reset = True
+            return f"已重载 {count} 个空间的模型，修复完毕！"
+        command_handler.push_command("复位重载", command_reset, False)
 
         # 追加消息历史查询命令
         def command_history(string, list_args, message_list_id, user_openid, is_group):
@@ -576,14 +604,14 @@ class NekoClient(botpy.Client):
                 # 看看是否有图数据
                 if length_is0:
                     # 查询是否需要调用 tool
-                    tools_res = ''
+                    tools_res = 'e:'
                     if lyMblApi is not None:
                         # 需要调用
                         if hc.use_ly_mbl_api():
                             tools_res = await http_client.fetch_tools_model(
                                 user_openid, tools_url, [], hc, content, lyMblApi
                             )
-                    if len(tools_res) != 0:
+                    if not tools_res.startswith("e:"):
                         # 函数调用结果
                         logger.info("触发了函数调用：" + tools_res)
                         if '失败' not in tools_res:
@@ -686,10 +714,9 @@ class NekoClient(botpy.Client):
                                       '#4.%20%E5%86%85%E7%BD%AE%E6%8C%87%E4%BB%A4%20-%20qq%E6%8C%87%E4%BB%A4\n\n'
                                       '关于异常汇总：https://www.lingyuzhao.top/b/Article/-2321317989405261'
                                       )
-
-                await message_bot.reply(content=reply_content)
                 logger.info(
                     f"【ok】时间：{date_str}; realId:{real_id}; 玩家:{user_mark}; 消息:{content}; 回复:{reply_content}")
+                await message_bot.reply(content=reply_content)
 
         except ServerError as se:
             await NekoClient.handler_qq_error(message_bot, content, se, 1)
@@ -751,14 +778,14 @@ class NekoClient(botpy.Client):
                 # 看看是否有图数据
                 if length_is0:
                     # 查询是否需要调用 tool
-                    tools_res = ''
+                    tools_res = 'e:'
                     if lyMblApi is not None:
                         # 需要调用
                         if hc.use_ly_mbl_api():
                             tools_res = await http_client.fetch_tools_model(
                                 user_openid, tools_url, [], hc, content, lyMblApi
                             )
-                    if len(tools_res) != 0:
+                    if not tools_res.startswith("e:"):
                         # 函数调用结果
                         logger.info("触发了函数调用：" + tools_res)
                         if '失败' not in tools_res:
@@ -825,13 +852,13 @@ class NekoClient(botpy.Client):
                         "role": "assistant",
                         "content": reply_content
                     }, append=count == 1)
-                    await message_bot.reply(content=reply_content, msg_seq=str(count))
                     if count == 1:
                         logger.info(
                             f"【ok】时间：{date_str}; realId:{real_id}; 玩家:{user_mark}; 消息:{content}; 回复:{reply_content}")
                     else:
                         logger.info(
                             f"玩家:{user_mark}; 回复:{reply_content}")
+                    await message_bot.reply(content=reply_content, msg_seq=str(count))
 
                 # 准备一个函数 用来处理qq异常
                 async def handler_qq_error(error, count):

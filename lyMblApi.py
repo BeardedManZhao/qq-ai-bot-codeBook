@@ -52,7 +52,7 @@ class LyMblApiJvm:
         res_str = []
         res = json['message']
         if 'tool_calls' not in res:
-            return ''
+            return 'e:' + str(json)
         else:
             for func in res['tool_calls']:
                 f = func['function']
