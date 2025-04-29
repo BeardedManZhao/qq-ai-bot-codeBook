@@ -434,10 +434,10 @@ class NekoClient(botpy.Client):
             if hc.get_space_chat_fun(self.handler_message_stream) == self.handler_message:
                 # 非流模式就启用流
                 hc.set_space_chat_fun(self.handler_message_stream)
-                return f"启用 stream 模式~"
+                return f"启用了 stream 模式~"
             else:
                 hc.set_space_chat_fun(self.handler_message)
-                return f"关闭 stream 模式~"
+                return f"关闭了 stream 模式~"
 
         command_handler.push_command("切换流模式", command_set_stream_by_line, False)
 

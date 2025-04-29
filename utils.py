@@ -369,7 +369,7 @@ class HttpClient:
                                                         res_string, StrUtils.markdown_string_mark
                                                     )
                                             )
-                                            if count <= max_count_index and '\n' in res_string:
+                                            if count <= max_count_index and '。' in res_string:
                                                 # 如果满足条件 查看是否处于markdown
                                                 if suspected_mark_down:
                                                     # 复位
