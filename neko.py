@@ -311,12 +311,13 @@ class NekoClient(botpy.Client):
                 old_type = hc.get_space_type(def_type_string=def_type_string)
                 # 然后在这里重新构建 url
                 hc.set_space_model_url(
-                            create_url(old_type, old_model),
-                            create_group_model_url(old_type, old_model, True)
-                        )
+                    create_url(old_type, old_model),
+                    create_group_model_url(old_type, old_model, True)
+                )
                 count += 1
             self.already_reset = True
             return f"已重载 {count} 个空间的模型，修复完毕！"
+
         command_handler.push_command("复位重载", command_reset, False)
 
         # 追加消息历史查询命令
@@ -655,13 +656,28 @@ class NekoClient(botpy.Client):
                         content=content
                     )
                     res_message = resp['message']
+                    if type(res_message) is not str:
+                        res_message = res_message['content']
+                    # 查看是否需要逻辑重构
+                    if '文字提取识别' in content:
+                        # 代表不需要逻辑重构
+                        # 保存图像消息
+                        logger.info(res_message)
+                        NekoClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
+                            "role": "assistant",
+                            "content": res_message
+                        })
+                        # 回复用户
+                        await message_bot.reply(content=res_message)
+                        # 终止函数
+                        return
                     # 保存图像消息
                     NekoClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                         "role": "user",
                         "content": f"# 系统消息(注意，这不是用户发送的)\n"
                                    f"> 当前系统时间：{date_str}"
                                    f"\n\n----\n\n"
-                                   f"## 关于图片的解析结果：\n{res_message['content']}\n\n"
+                                   f"## 关于图片的解析结果：\n{res_message}\n\n"
                                    f"# 用户发送的消息（用户名：{user_mark}）这个才是用户发送的：\n\n----\n\n{content}"
                     })
                     # 保存消息
@@ -828,6 +844,21 @@ class NekoClient(botpy.Client):
                         images=images_base
                     )
                     res_message = resp['message']
+                    if type(res_message) is not str:
+                        res_message = res_message['content']
+                    # 查看是否需要逻辑重构
+                    if '文字提取识别' in content:
+                        # 代表不需要逻辑重构
+                        # 保存图像消息
+                        logger.info(res_message)
+                        NekoClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
+                            "role": "assistant",
+                            "content": res_message
+                        })
+                        # 回复用户
+                        await message_bot.reply(content=res_message)
+                        # 终止函数
+                        return
                     # 保存图像消息
                     NekoClient.safe_history_update_use_obj(hc=hc, is_first=is_first, message={
                         "role": "user",
@@ -835,7 +866,7 @@ class NekoClient(botpy.Client):
                                    f"> 当前系统时间：{date_str}"
                                    f"\n\n----\n\n"
                                    f"## 关于图片的解析结果：\n"
-                                   f"{res_message if type(res_message) == str else res_message['content']}\n\n"
+                                   f"{res_message}\n\n"
                                    f"# 用户发送的消息（用户名：{user_mark}）这个才是用户发送的：\n\n----\n\n{content}"
                     })
 
